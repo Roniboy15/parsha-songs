@@ -59,8 +59,8 @@ th {
 
 /* header sizing + fixed behavior on wide screens */
 :root {
-  --site-header-height: 72px;
-  --logo-size: 64px;
+  --site-header-height: 92px;   /* increased header height */
+  --logo-size: 80px;            /* larger logo */
 }
 
 /* keep header normal by default (mobile/small screens) */
@@ -78,14 +78,14 @@ th {
 
 .site-title .main-title {
   margin: 0;
-  font-size: 1.25rem;
-  line-height: 1.1;
+  font-size: 1.5rem; /* larger title */
+  line-height: 1.05;
 }
 
 /* logo default */
 .site-logo {
-  width: 64px;
-  height: 64px;
+  width: var(--logo-size);
+  height: var(--logo-size);
   object-fit: contain;
   border-radius: 8px;
 }
@@ -100,7 +100,7 @@ th {
     background: rgba(255,255,255,0.98);
     box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     border-radius: 8px;
-    padding: 12px 20px;
+    padding: 14px 24px;
     height: var(--site-header-height);
     align-items: center;
     width: min(900px, calc(100% - 48px));
@@ -128,7 +128,7 @@ th {
 
   /* push page content down so the fixed header doesn't cover it */
   body {
-    padding-top: calc(var(--site-header-height) + 28px);
+    padding-top: calc(var(--site-header-height) + 36px);
   }
 }
 
@@ -161,4 +161,14 @@ th {
 @media (max-width: 420px) {
   .site-logo { width: 44px; height: 44px; }
   .site-title .main-title { font-size: 1rem; }
+}
+
+/* hide "add" controls in viewing songs area (covers common class/attribute names) */
+#links-table .add-cell,
+#links-table .add-btn,
+#links-table .add-column,
+#links-table .add,
+#links-table [data-role="add"],
+.links-add {
+  display: none !important;
 }
