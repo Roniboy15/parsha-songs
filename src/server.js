@@ -1,243 +1,216 @@
 // src/server.js
 import express from "express";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import fs from "node:fs/promises";
 import crypto from "node:crypto";
-import db from "./db.js";
+import {
+  findSongByTitleVersion,
+  insertSong,
+  insertLink,
+  getLinksByParasha,
+  deleteLink,
+  deleteSong,
+} from "./db.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(express.json());
-app.use(express.static("public")); // to serve index.html etc.
+
+// serve static frontend (on Render we are in /src, so go one level up)
+app.use(express.static(path.join(__dirname, "..", "public")));
+
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "..", "public", "index.html"));
+});
 
 // helper to load our static file
 async function loadParshiot() {
-    const txt = await fs.readFile("data/parshiot.json", "utf8");
-    return JSON.parse(txt).parshiot;
+  const txt = await fs.readFile(
+    path.join(__dirname, "..", "data", "parshiot.json"),
+    "utf8"
+  );
+  return JSON.parse(txt).parshiot;
 }
 
-// 1) GET /api/parshiot  --> frontend will build the dropdown from this
+// 1) GET /api/parshiot
 app.get("/api/parshiot", async (req, res) => {
-    const parshiot = await loadParshiot();
-    res.json(parshiot);
+  const parshiot = await loadParshiot();
+  res.json(parshiot);
 });
 
 // 2) GET /api/current-reading  --> find the next shabbat parasha in the coming 7 days
 app.get("/api/current-reading", async (req, res) => {
-    const loc = req.query.loc === "israel" ? "israel" : "diaspora";
+  const loc = req.query.loc === "israel" ? "israel" : "diaspora";
 
-    // today
-    const today = new Date();
-    const start = today.toISOString().slice(0, 10);
+  const today = new Date();
+  const start = today.toISOString().slice(0, 10);
+  const endDate = new Date(today);
+  endDate.setDate(endDate.getDate() + 7);
+  const end = endDate.toISOString().slice(0, 10);
 
-    // 7 days from now
-    const endDate = new Date(today);
-    endDate.setDate(endDate.getDate() + 7);
-    const end = endDate.toISOString().slice(0, 10);
+  const url =
+    `https://www.hebcal.com/hebcal?cfg=json&s=on&leyning=on&start=${start}&end=${end}` +
+    (loc === "israel" ? "&i=on" : "");
 
-    // ask hebcal for a range, not just for today
-    const url =
-        `https://www.hebcal.com/hebcal?cfg=json&s=on&leyning=on&start=${start}&end=${end}` +
-        (loc === "israel" ? "&i=on" : "");
+  try {
+    const r = await fetch(url);
+    const data = await r.json();
+    const items = data.items || [];
+    const parshaItem = items.find((it) => it.category === "parashat");
 
-    try {
-        const r = await fetch(url);
-        const data = await r.json();
-        const items = data.items || [];
-
-        // find the FIRST item in that range that is a weekly parasha
-        const parshaItem = items.find((it) => it.category === "parashat");
-
-        if (!parshaItem) {
-            return res.json({ ok: false, reason: "no-parasha-in-next-7-days" });
-        }
-
-        const parshaNameEn = parshaItem.title.replace("Parashat ", "").trim();
-        const parshiot = await loadParshiot();
-
-        // try to find this parasha in OUR list (54 parshiot)
-        let match = parshiot.find((p) => p.name_en === parshaNameEn);
-
-        // if not found, try to match the first part of a combined parasha
-        if (!match && parshaNameEn.includes("-")) {
-            const firstPart = parshaNameEn.split("-")[0].trim();
-            match = parshiot.find((p) => p.name_en === firstPart);
-        }
-
-        if (!match) {
-            // fallback: send what hebcal said, but warn frontend
-            return res.json({
-                ok: true,
-                parasha: {
-                    id: parshaNameEn.toLowerCase().replace(/\s+/g, "-"),
-                    name_en: parshaNameEn,
-                    name_he: parshaItem.hebrew || null
-                },
-                haftarot: parshaItem.leyning?.haftara
-                    ? [{ id: "auto", name: parshaItem.leyning.haftara }]
-                    : [],
-                warn: "parasha-not-in-static-list"
-            });
-        }
-
-        const haftarot =
-            match.haftarot?.[loc] ||
-            match.haftarot?.diaspora ||
-            [];
-
-        res.json({
-            ok: true,
-            parasha: {
-                id: match.id,
-                name_en: match.name_en,
-                name_he: match.name_he,
-                book: match.book
-            },
-            haftarot
-        });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ ok: false, error: "hebcal-failed" });
-    }
-});
-
-
-// 3) POST /api/links  --> save user's contribution
-app.post("/api/links", async (req, res) => {
-    const {
-        parasha_id,
-        target_kind,
-        target_id,
-        song,
-        verse_ref,
-        added_by
-    } = req.body;
-
-    // minimal validation
-    if (!parasha_id || !target_kind || !song?.title) {
-        return res.status(400).json({ error: "missing-fields" });
+    if (!parshaItem) {
+      return res.json({ ok: false, reason: "no-parasha-in-next-7-days" });
     }
 
-    // check that parasha exists in our static list
+    const parshaNameEn = parshaItem.title.replace("Parashat ", "").trim();
     const parshiot = await loadParshiot();
-    const parasha = parshiot.find((p) => p.id === parasha_id);
-    if (!parasha) {
-        return res.status(400).json({ error: "unknown-parasha" });
+
+    let match = parshiot.find((p) => p.name_en === parshaNameEn);
+
+    if (!match && parshaNameEn.includes("-")) {
+      const firstPart = parshaNameEn.split("-")[0].trim();
+      match = parshiot.find((p) => p.name_en === firstPart);
     }
 
-    // if user said "haftarah", make sure it's really under this parasha
-    if (target_kind === "haftarah") {
-        const haftarot =
-            parasha.haftarot?.diaspora || []; // we only have diaspora for now
-        const ok = haftarot.some((h) => h.id === target_id);
-        if (!ok) {
-            return res
-                .status(400)
-                .json({ error: "haftarah-not-under-this-parasha" });
-        }
+    if (!match) {
+      return res.json({
+        ok: true,
+        parasha: {
+          id: parshaNameEn.toLowerCase().replace(/\s+/g, "-"),
+          name_en: parshaNameEn,
+          name_he: parshaItem.hebrew || null,
+        },
+        haftarot: parshaItem.leyning?.haftara
+          ? [{ id: "auto", name: parshaItem.leyning.haftara }]
+          : [],
+        warn: "parasha-not-in-static-list",
+      });
     }
 
-    // find or create song
-    const existingSong = db
-        .prepare(
-            "SELECT * FROM songs WHERE title = ? AND ifnull(version,'') = ifnull(?, '')"
-        )
-        .get(song.title, song.version || null);
+    const haftarot =
+      match.haftarot?.[loc] || match.haftarot?.diaspora || [];
 
-    let songId;
-    if (existingSong) {
-        songId = existingSong.id;
-    } else {
-        songId = crypto.randomUUID();
-        db.prepare(
-            "INSERT INTO songs (id, title, version, external_url) VALUES (?, ?, ?, ?)"
-        ).run(
-            songId,
-            song.title,
-            song.version || null,
-            song.external_url || null
-        );
-    }
-
-    // insert the link
-    const info = db
-        .prepare(
-            "INSERT INTO links (parasha_id, target_kind, target_id, song_id, verse_ref, added_by, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')"
-        )
-        .run(
-            parasha_id,
-            target_kind,
-            target_kind === "haftarah" ? target_id : null,
-            songId,
-            verse_ref || null,
-            added_by || null
-        );
-
-    res.json({ ok: true, link_id: info.lastInsertRowid });
+    res.json({
+      ok: true,
+      parasha: {
+        id: match.id,
+        name_en: match.name_en,
+        name_he: match.name_he,
+        book: match.book,
+      },
+      haftarot,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ ok: false, error: "hebcal-failed" });
+  }
 });
 
-// 4) GET /api/links?parasha_id=bereshit[&target_kind=haftarah]
-app.get("/api/links", (req, res) => {
-    const { parasha_id, target_kind } = req.query;
+// 3) POST /api/links
+app.post("/api/links", async (req, res) => {
+  const clientToken = req.headers["x-contrib-token"] || req.query.token || null;
+  const expected = process.env.CONTRIB_TOKEN || null;
+  if (expected && clientToken !== expected) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
 
-    if (!parasha_id) {
-        return res.status(400).json({ error: "parasha_id is required" });
+  const {
+    parasha_id,
+    target_kind,
+    target_id,
+    song,
+    verse_ref,
+    added_by,
+  } = req.body;
+
+  if (!parasha_id || !target_kind || !song?.title) {
+    return res.status(400).json({ error: "missing-fields" });
+  }
+
+  const parshiot = await loadParshiot();
+  const parasha = parshiot.find((p) => p.id === parasha_id);
+  if (!parasha) {
+    return res.status(400).json({ error: "unknown-parasha" });
+  }
+
+  if (target_kind === "haftarah") {
+    const haftarot = parasha.haftarot?.diaspora || [];
+    const ok = haftarot.some((h) => h.id === target_id);
+    if (!ok) {
+      return res
+        .status(400)
+        .json({ error: "haftarah-not-under-this-parasha" });
     }
+  }
 
-    // base query
-    let sql = `
-    SELECT
-      l.id,
-      l.parasha_id,
-      l.target_kind,
-      l.target_id,
-      l.verse_ref,
-      l.added_at,
-      s.title AS song_title,
-      s.external_url AS song_url
-    FROM links l
-    JOIN songs s ON l.song_id = s.id
-    WHERE l.parasha_id = ?
-  `;
-    const params = [parasha_id];
-
-    // filter by parasha/haftarah if provided
-    if (target_kind === "parasha" || target_kind === "haftarah") {
-        sql += " AND l.target_kind = ?";
-        params.push(target_kind);
+  const cleanTitle = song.title.replace(/[<>]/g, "").slice(0, 200);
+  const cleanUrl = song.external_url ? song.external_url.trim() : null;
+  if (cleanUrl) {
+    try {
+      const u = new URL(cleanUrl);
+      if (u.protocol !== "http:" && u.protocol !== "https:") {
+        return res.status(400).json({ error: "invalid-url" });
+      }
+    } catch {
+      return res.status(400).json({ error: "invalid-url" });
     }
+  }
 
-    sql += " ORDER BY l.added_at DESC";
+  // find or create song
+  let existing = await findSongByTitleVersion(
+    cleanTitle,
+    song.version || null
+  );
+  let songId;
+  if (existing) {
+    songId = existing.id;
+  } else {
+    songId = crypto.randomUUID();
+    await insertSong(songId, cleanTitle, song.version || null, cleanUrl || null);
+  }
 
-    const rows = db.prepare(sql).all(...params);
-    res.json(rows);
+  const newId = await insertLink({
+    parasha_id,
+    target_kind,
+    target_id: target_kind === "haftarah" ? target_id : null,
+    song_id: songId,
+    verse_ref: verse_ref || null,
+    added_by: added_by || null,
+  });
+
+  res.json({ ok: true, link_id: newId });
 });
 
-
-
-// DELETE one link (e.g. /api/links/123)
-app.delete("/api/links/:id", (req, res) => {
-    const { id } = req.params;
-    const info = db.prepare("DELETE FROM links WHERE id = ?").run(id);
-    res.json({ ok: true, deleted: info.changes });
+// 4) GET /api/links
+app.get("/api/links", async (req, res) => {
+  const { parasha_id, target_kind } = req.query;
+  if (!parasha_id) {
+    return res.status(400).json({ error: "parasha_id is required" });
+  }
+  const rows = await getLinksByParasha(parasha_id, target_kind || null);
+  res.json(rows);
 });
 
-
-// DELETE a song and all its links
-app.delete("/api/songs/:id", (req, res) => {
-    const { id } = req.params;
-
-    // remove related links first
-    db.prepare("DELETE FROM links WHERE song_id = ?").run(id);
-
-    // then delete the song itself
-    const info = db.prepare("DELETE FROM songs WHERE id = ?").run(id);
-
-    res.json({ ok: true, deleted_song: info.changes });
+// 5) DELETE /api/links/:id
+app.delete("/api/links/:id", async (req, res) => {
+  const { id } = req.params;
+  const deleted = await deleteLink(id);
+  res.json({ ok: true, deleted });
 });
 
+// 6) DELETE /api/songs/:id  (rarely used)
+app.delete("/api/songs/:id", async (req, res) => {
+  const { id } = req.params;
+  const deleted = await deleteSong(id);
+  res.json({ ok: true, deleted_song: deleted });
+});
 
+const PORT = process.env.PORT || 3000;
+const HOST = "0.0.0.0";
 
-
-const PORT = 3000;
-app.listen(PORT, () => {
-    console.log(`listening on http://localhost:${PORT}`);
+app.listen(PORT, HOST, () => {
+  console.log(`listening on http://${HOST}:${PORT}`);
 });
