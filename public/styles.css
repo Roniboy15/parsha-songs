@@ -56,3 +56,109 @@ th {
     width: calc(33% - 10px);
     margin-bottom: 10px;
 }
+
+/* header sizing + fixed behavior on wide screens */
+:root {
+  --site-header-height: 72px;
+  --logo-size: 64px;
+}
+
+/* keep header normal by default (mobile/small screens) */
+.site-header {
+  max-width: 900px;
+  margin: 18px auto;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  position: relative;
+  z-index: 10;
+}
+
+.site-title .main-title {
+  margin: 0;
+  font-size: 1.25rem;
+  line-height: 1.1;
+}
+
+/* logo default */
+.site-logo {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+/* Fixed header for wide screens and push content down so "1." is visible */
+@media (min-width: 720px) {
+  .site-header {
+    position: fixed;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(255,255,255,0.98);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    border-radius: 8px;
+    padding: 12px 20px;
+    height: var(--site-header-height);
+    align-items: center;
+    width: min(900px, calc(100% - 48px));
+    overflow: visible;
+  }
+
+  /* logo sits inside the header (absolute) so it doesn't overlap the page content */
+  .site-logo {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: var(--logo-size);
+    height: var(--logo-size);
+  }
+
+  /* give the title right padding so text never sits under the logo */
+  .site-title {
+    padding-right: calc(var(--logo-size) + 24px);
+    max-width: calc(100% - (var(--logo-size) + 56px));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* push page content down so the fixed header doesn't cover it */
+  body {
+    padding-top: calc(var(--site-header-height) + 28px);
+  }
+}
+
+/* On small screens revert padding and fixed positioning so layout stays as before */
+@media (max-width: 719px) {
+  .site-header {
+    position: relative;
+    top: auto;
+    left: auto;
+    transform: none;
+    background: transparent;
+    box-shadow: none;
+    border-radius: 0;
+    padding: 8px 16px;
+    height: auto;
+  }
+
+  .site-logo {
+    position: static;
+    width: 56px;
+    height: 56px;
+  }
+
+  body {
+    padding-top: 0;
+  }
+}
+
+/* optional smaller tweaks */
+@media (max-width: 420px) {
+  .site-logo { width: 44px; height: 44px; }
+  .site-title .main-title { font-size: 1rem; }
+}
