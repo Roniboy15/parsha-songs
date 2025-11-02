@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Parsha ↔ Songs</title>
+    <link rel="stylesheet" href="styles.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+
+<body>
+    <h1>Parsha ↔ Songs</h1>
+
+    <section>
+        <h2>1. Use today's parasha</h2>
+        <button id="btn-current">Load current (diaspora)</button>
+        <p id="current-parasha"></p>
+    </section>
+
+    <section>
+        <h2>2. Or pick from list</h2>
+        <select id="parsha-list"></select>
+
+        <div style="margin-top: 1rem;">
+            <label>
+                <input type="radio" name="target-kind" value="parasha" checked />
+                Link to parasha (Torah)
+            </label>
+            <label>
+                <input type="radio" name="target-kind" value="haftarah" />
+                Link to haftarah
+            </label>
+        </div>
+
+        <div id="haftarah-wrap" style="display: none; margin-top: 0.5rem;">
+            <label for="haftarah-list">Haftarah:</label>
+            <select id="haftarah-list"></select>
+        </div>
+    </section>
+
+    <section>
+        <h2>3. Song details</h2>
+        <input id="song-title" placeholder="Song name" />
+        <input id="song-link" placeholder="Link (optional)" />
+        <input id="verse-ref" placeholder="Verse ref (optional)" />
+        <button id="btn-save">Save</button>
+        <p id="save-result"></p>
+    </section>
+
+    <section>
+        <h2>4. Songs for this selection</h2>
+        <p id="links-info"></p>
+        <table id="links-table" border="1" cellpadding="4">
+            <thead>
+                <tr>
+                    <th>Song</th>
+                    <th>Link</th>
+                    <th>Verse</th>
+                    <th>Target</th>
+                    <th>Added</th>
+                    <th>Delete</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </section>
+
+    <script>
+        let ALL_PARSHIOT = [];
+        let selectedParashaId = null;
+        let selectedKind = "parasha";
+        let selectedHaftarahId = null;
+
+        // 1) load parshiot and build dropdown
+        async function loadParshiot() {
+            const res = await fetch("/api/parshiot");
+            const parshiot = await res.json();
+            ALL_PARSHIOT = parshiot;
+
+            const byBook = {};
+            parshiot.forEach((p) => {
+                if (!byBook[p.book]) byBook[p.book] = [];
+                byBook[p.book].push(p);
+            });
+
+            const order = ["bereshit", "shemot", "vayikra", "bamidbar", "devarim"];
+            const select = document.getElementById("parsha-list");
+            select.innerHTML = "";
+
+            order.forEach((book) => {
+                const list = byBook[book];
+                if (!list) return;
+                const og = document.createElement("optgroup");
+                og.label = list[0].book_en;
+                list.sort((a, b) => a.order_index - b.order_index);
+                list.forEach((p) => {
+                    const opt = document.createElement("option");
+                    opt.value = p.id;
+                    opt.textContent = p.name_en;
+                    og.appendChild(opt);
+                });
+                select.appendChild(og);
+            });
+
+            // default selection
+            if (parshiot.length) {
+                selectedParashaId = parshiot[0].id;
+                populateHaftarot(selectedParashaId);
+                await loadLinksForCurrentSelection(); // show initial links
+            }
+
+            // when user changes parasha
+            select.addEventListener("change", async (e) => {
+                selectedParashaId = e.target.value;
+                populateHaftarot(selectedParashaId);
+                await loadLinksForCurrentSelection();
+            });
+        }
+
+        // 2) fill haftarot for a given parasha
+        function populateHaftarot(parashaId) {
+            const wrap = document.getElementById("haftarah-wrap");
+            const sel = document.getElementById("haftarah-list");
+            sel.innerHTML = "";
+
+            const parasha = ALL_PARSHIOT.find((p) => p.id === parashaId);
+            if (!parasha) return;
+
+            const list =
+                parasha.haftarot?.diaspora && parasha.haftarot.diaspora.length
+                    ? parasha.haftarot.diaspora
+                    : [];
+
+            list.forEach((h) => {
+                const opt = document.createElement("option");
+                opt.value = h.id;
+                opt.textContent = h.name;
+                sel.appendChild(opt);
+            });
+
+            selectedHaftarahId = list.length ? list[0].id : null;
+            wrap.style.display =
+                selectedKind === "haftarah" && list.length ? "block" : "none";
+        }
+
+        // 3) load current parasha from backend/he bcal
+        document.getElementById("btn-current").addEventListener("click", async () => {
+            const res = await fetch("/api/current-reading");
+            const data = await res.json();
+            const p = document.getElementById("current-parasha");
+
+            if (!data.ok) {
+                p.textContent = "No parasha in the next 7 days.";
+                return;
+            }
+
+            const currentId = data.parasha.id;
+            const currentName = data.parasha.name_en;
+
+            // show it on top
+            p.textContent = `Today / next Shabbat: ${currentName} (${currentId})`;
+
+            // update state
+            selectedParashaId = currentId;
+
+            // update dropdown if option exists
+            const select = document.getElementById("parsha-list");
+            const option = Array.from(select.options).find(
+                (opt) => opt.value === currentId
+            );
+            if (option) {
+                select.value = currentId;
+            }
+
+            // update haftarot & table
+            populateHaftarot(selectedParashaId);
+            await loadLinksForCurrentSelection();
+        });
+
+
+
+        // 4) radio buttons (parasha / haftarah)
+        document
+            .querySelectorAll('input[name="target-kind"]')
+            .forEach((input) => {
+                input.addEventListener("change", async (e) => {
+                    selectedKind = e.target.value;
+                    populateHaftarot(selectedParashaId);
+                    await loadLinksForCurrentSelection();
+                });
+            });
+
+        // 5) save new link
+        document.getElementById("btn-save").addEventListener("click", async () => {
+            const title = document.getElementById("song-title").value;
+            const link = document.getElementById("song-link").value;
+            const verse = document.getElementById("verse-ref").value;
+            if (!title || !selectedParashaId) {
+                alert("Need song name + parasha");
+                return;
+            }
+            const payload = {
+                parasha_id: selectedParashaId,
+                target_kind: selectedKind,
+                song: { title, external_url: link },
+                verse_ref: verse
+            };
+            if (selectedKind === "haftarah") {
+                payload.target_id = selectedHaftarahId;
+            }
+            const res = await fetch("/api/links", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            document.getElementById("save-result").textContent = data.ok
+                ? "Saved #" + data.link_id
+                : "Error: " + (data.error || "unknown");
+
+            if (data.ok) {
+                await loadLinksForCurrentSelection(); // refresh table
+            }
+        });
+
+        // 6) load links for current parasha/kind
+        async function loadLinksForCurrentSelection() {
+            if (!selectedParashaId) return;
+
+            const params = new URLSearchParams({ parasha_id: selectedParashaId });
+            // show only selected type
+            params.set("target_kind", selectedKind);
+
+            const res = await fetch(`/api/links?${params.toString()}`);
+            const rows = await res.json();
+
+            const info = document.getElementById("links-info");
+            const tbody = document.querySelector("#links-table tbody");
+            tbody.innerHTML = "";
+
+            info.textContent = rows.length
+                ? `Found ${rows.length} link(s).`
+                : "No links yet.";
+
+            rows.forEach((row) => {
+                const tr = document.createElement("tr");
+
+                const tdSong = document.createElement("td");
+                tdSong.textContent = row.song_title;
+                tr.appendChild(tdSong);
+
+                const tdUrl = document.createElement("td");
+                if (row.song_url) {
+                    const a = document.createElement("a");
+                    a.href = row.song_url;
+                    a.textContent = "open";
+                    a.target = "_blank";
+                    tdUrl.appendChild(a);
+                } else {
+                    tdUrl.textContent = "";
+                }
+                tr.appendChild(tdUrl);
+
+                const tdVerse = document.createElement("td");
+                tdVerse.textContent = row.verse_ref || "";
+                tr.appendChild(tdVerse);
+
+                const tdTarget = document.createElement("td");
+                tdTarget.textContent = row.target_kind;
+                tr.appendChild(tdTarget);
+
+                const tdAdded = document.createElement("td");
+                tdAdded.textContent = row.added_at;
+                tr.appendChild(tdAdded);
+
+                const tdDel = document.createElement("td");
+                const btn = document.createElement("button");
+                btn.textContent = "🗑";
+                btn.addEventListener("click", async () => {
+                    if (!confirm("Delete this link?")) return;
+                    await fetch(`/api/links/${row.id}`, { method: "DELETE" });
+                    await loadLinksForCurrentSelection();
+                });
+                tdDel.appendChild(btn);
+                tr.appendChild(tdDel);
+
+
+                tbody.appendChild(tr);
+            });
+        }
+
+
+
+        // initial load
+        loadParshiot();
+    </script>
+</body>
+
+</html>
