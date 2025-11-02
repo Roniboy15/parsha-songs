@@ -1,4 +1,5 @@
 // src/server.js
+import "dotenv/config";
 import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,12 +20,24 @@ const __dirname = path.dirname(__filename);
 const app = express();
 app.use(express.json());
 
-// serve static frontend (on Render we are in /src, so go one level up)
-app.use(express.static(path.join(__dirname, "..", "public")));
+// serve static frontend (don't let static serve index.html so our GET / can inject token)
+app.use(
+  express.static(path.join(__dirname, "..", "public"), {
+    index: false,
+  })
+);
 
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "..", "public", "index.html"));
+app.get("/", async (req, res) => {
+  const html = await fs.readFile("public/index.html", "utf8");
+  const injected = html.replace(
+    "</head>",
+    `<script>
+       window.CONTRIB_TOKEN = "${process.env.CONTRIB_TOKEN || ""}";
+     </script></head>`
+  );
+  res.type("html").send(injected);
 });
+
 
 // helper to load our static file
 async function loadParshiot() {

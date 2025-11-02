@@ -208,19 +208,32 @@
             if (selectedKind === "haftarah") {
                 payload.target_id = selectedHaftarahId;
             }
+
             const res = await fetch("/api/links", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    "x-contrib-token": window.CONTRIB_TOKEN || ""
+                },
                 body: JSON.stringify(payload)
             });
+
+
+            if (!res.ok) {
+                const text = await res.text();
+                document.getElementById("save-result").textContent =
+                    `Error (${res.status}): ${text}`;
+                return;
+            }
             const data = await res.json();
             document.getElementById("save-result").textContent = data.ok
                 ? "Saved #" + data.link_id
                 : "Error: " + (data.error || "unknown");
 
             if (data.ok) {
-                await loadLinksForCurrentSelection(); // refresh table
+                await loadLinksForCurrentSelection();
             }
+
         });
 
         // 6) load links for current parasha/kind
