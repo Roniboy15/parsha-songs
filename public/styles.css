@@ -380,3 +380,118 @@ html, body {
     font-size: 1.5rem !important;
   }
 }
+
+/* floating help button */
+.help-button {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: #0066cc;
+    color: white;
+    border: none;
+    font-size: 1.5rem;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 1000;
+    transition: all 0.2s ease;
+}
+
+.help-button:hover {
+    background: #0052a3;
+    transform: scale(1.05);
+}
+
+.help-button:active {
+    transform: scale(0.95);
+}
+
+/* help modal content */
+.help-modal-content {
+    max-width: 600px;
+    max-height: 80vh;
+}
+
+.help-content {
+    line-height: 1.6;
+    color: #333;
+}
+
+.help-content h2 {
+    margin-top: 0;
+    color: #0066cc;
+}
+
+.help-content p {
+    margin: 1em 0;
+}
+
+.help-content ul, .help-content ol {
+    margin: 0.5em 0;
+    padding-left: 1.5em;
+}
+
+.help-content li {
+    margin: 0.3em 0;
+}
+
+.help-content strong {
+    color: #0066cc;
+}
+
+/* help modal header with verse */
+.help-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+    gap: 20px;
+}
+
+.help-header h2 {
+    margin: 0;
+    flex: 1;
+}
+
+.help-verse {
+    text-align: right;
+    flex-shrink: 0;
+    max-width: 200px;
+}
+
+.verse-hebrew {
+    font-size: 0.9rem;
+    font-weight: bold;
+    color: #0066cc;
+    margin-bottom: 4px;
+    direction: rtl;
+}
+
+.verse-english {
+    font-size: 0.8rem;
+    font-style: italic;
+    color: #666;
+    margin-bottom: 2px;
+}
+
+.verse-source {
+    font-size: 0.75rem;
+    color: #999;
+    font-weight: normal;
+}
+
+/* responsive: stack on smaller screens */
+@media (max-width: 600px) {
+    .help-header {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .help-verse {
+        text-align: center;
+        max-width: none;
+    }
+}

@@ -78,6 +78,43 @@
         </table>
     </section>
 
+    <!-- floating help button -->
+    <button id="help-btn" class="help-button" aria-label="Help">?</button>
+
+    <!-- help modal -->
+    <div id="help-modal" class="modal" aria-hidden="true" style="display:none">
+        <div class="modal-content help-modal-content" role="dialog" aria-modal="true" aria-label="About this app">
+            <button id="help-modal-close" class="modal-close" aria-label="Close">×</button>
+            <div class="help-header">
+                <h2>About Parsha Songs</h2>
+                <div class="help-verse">
+                    <div class="verse-hebrew">ואתם כתבו לכם את השירה הזאת</div>
+                    <div class="verse-english">"Now therefore write this song for yourselves"</div>
+                    <div class="verse-source">Devarim 31:19</div>
+                </div>
+            </div>
+            <div class="help-content">
+                <p><strong>What is this?</strong></p>
+                <p>This app helps you find songs that connect to weekly Torah portions (Parshiot) and their Haftarah readings.</p>
+                
+                <p><strong>How to use:</strong></p>
+                <ol>
+                    <li><strong>Select a Parsha:</strong> Choose from the dropdown (e.g., "Bereshit", "Noach")</li>
+                    <li><strong>Pick Torah or Haftarah:</strong> Choose what you want songs for</li>
+                    <li><strong>Browse existing songs:</strong> See what others have already shared</li>
+                    <li><strong>Add your own:</strong> Share a song with lyrics from the weekly reading</li>
+                </ol>
+
+                <p><strong>Tips:</strong></p>
+                <ul>
+                    <li>Include YouTube, Spotify, or other music links when possible</li>
+                    <li>Add verse references to show the connection (e.g. "1:22" for perek/chapter 1, pasuk/verse 22)</li>
+                    <li>Help build a musical companion to Torah study!</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
     <script>
         let ALL_PARSHIOT = [];
         let selectedParashaId = null;
@@ -481,7 +518,41 @@
 
         // initial load
         loadParshiot();
+
+        // help modal control
+        function openHelpModal() {
+            const modal = document.getElementById("help-modal");
+            modal.style.display = "flex";
+            modal.setAttribute("aria-hidden", "false");
+            document.body.style.overflow = "hidden";
+            document.getElementById("help-modal-close").focus();
+        }
+
+        function closeHelpModal() {
+            const modal = document.getElementById("help-modal");
+            modal.style.display = "none";
+            modal.setAttribute("aria-hidden", "true");
+            document.body.style.overflow = "";
+        }
+
+        // help button click handler
+        document.getElementById("help-btn").addEventListener("click", openHelpModal);
+
+        // help modal close handlers
+        document.getElementById("help-modal-close").addEventListener("click", closeHelpModal);
+
+        // close on backdrop click or escape key (reuse existing modal handlers)
+        document.addEventListener("click", (e) => {
+            const helpModal = document.getElementById("help-modal");
+            if (e.target === helpModal) closeHelpModal();
+        });
+
+        document.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") {
+                closeHelpModal();
+                closeVerseModal(); // existing verse modal handler
+            }
+        });
     </script>
 </body>
-
 </html>
