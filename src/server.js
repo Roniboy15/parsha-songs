@@ -24,6 +24,24 @@ const __dirname = path.dirname(__filename);
 const app = express();
 app.use(express.json());
 
+// middleware to track visits (MOVE THIS HERE - before routes)
+app.use(async (req, res, next) => {
+  // only track GET requests to main page
+  if (req.method === "GET" && req.path === "/") {
+    try {
+      const ip = req.headers["x-forwarded-for"]?.split(",")[0] || 
+                 req.headers["x-real-ip"] || 
+                 req.socket.remoteAddress || 
+                 "unknown";
+      const userAgent = req.headers["user-agent"] || "";
+      await dbModule.recordVisit(ip, userAgent);
+    } catch (err) {
+      console.error("Failed to record visit:", err);
+    }
+  }
+  next();
+});
+
 // serve static frontend (don't let static serve index.html so our GET / can inject token)
 app.use(
   express.static(path.join(__dirname, "..", "public"), {
@@ -407,6 +425,23 @@ app.post("/api/test-notify", async (req, res) => {
   } catch (err) {
     console.error("test-notify failed:", err);
     res.status(500).json({ ok: false, error: err.message || String(err) });
+  }
+});
+
+// stats endpoint (admin-only)
+app.get("/api/stats", async (req, res) => {
+  const clientToken = req.headers["x-admin-token"] || req.query.admin || null;
+  const expected = process.env.ADMIN_TOKEN || null;
+  if (expected && clientToken !== expected) {
+    return res.status(401).json({ error: "admin-unauthorized" });
+  }
+  
+  try {
+    const stats = await dbModule.getVisitStats();
+    res.json(stats);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to get stats" });
   }
 });
 

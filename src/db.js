@@ -41,6 +41,17 @@ if (usePg) {
       added_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+
+  await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS visits (
+      id SERIAL PRIMARY KEY,
+      ip VARCHAR(45) NOT NULL,
+      user_agent TEXT,
+      visited_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_visits_ip ON visits(ip);
+    CREATE INDEX IF NOT EXISTS idx_visits_date ON visits(visited_at);
+  `);
 } else {
   // ---------- SQLITE MODE ----------
   const { default: Database } = await import("better-sqlite3");
@@ -64,6 +75,14 @@ if (usePg) {
       status TEXT NOT NULL DEFAULT 'pending',
       added_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS visits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ip TEXT NOT NULL,
+      user_agent TEXT,
+      visited_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_visits_ip ON visits(ip);
+    CREATE INDEX IF NOT EXISTS idx_visits_date ON visits(visited_at);
   `);
 }
 
@@ -240,6 +259,49 @@ export async function getTotalSongs() {
       .prepare(`SELECT COUNT(DISTINCT song_id) as total FROM links`)
       .get();
     return row?.total || 0;
+  }
+}
+
+// helper to record a visit
+export async function recordVisit(ip, userAgent) {
+  if (usePg) {
+    await pgPool.query(
+      `INSERT INTO visits (ip, user_agent) VALUES ($1, $2)`,
+      [ip, userAgent]
+    );
+  } else {
+    sqliteDb.prepare(
+      `INSERT INTO visits (ip, user_agent) VALUES (?, ?)`
+    ).run(ip, userAgent);
+  }
+}
+
+// helper to get visit stats
+export async function getVisitStats() {
+  if (usePg) {
+    const totalRes = await pgPool.query(`SELECT COUNT(*) as total FROM visits`);
+    const uniqueRes = await pgPool.query(`SELECT COUNT(DISTINCT ip) as unique FROM visits`);
+    const todayRes = await pgPool.query(`
+      SELECT COUNT(*) as today FROM visits 
+      WHERE visited_at >= NOW() - INTERVAL '1 day'
+    `);
+    return {
+      total: parseInt(totalRes.rows[0].total),
+      unique: parseInt(uniqueRes.rows[0].unique),
+      today: parseInt(todayRes.rows[0].today),
+    };
+  } else {
+    const total = sqliteDb.prepare(`SELECT COUNT(*) as total FROM visits`).get();
+    const unique = sqliteDb.prepare(`SELECT COUNT(DISTINCT ip) as unique FROM visits`).get();
+    const today = sqliteDb.prepare(`
+      SELECT COUNT(*) as today FROM visits 
+      WHERE visited_at >= datetime('now', '-1 day')
+    `).get();
+    return {
+      total: total.total,
+      unique: unique.unique,
+      today: today.today,
+    };
   }
 }
 

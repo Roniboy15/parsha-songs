@@ -58,22 +58,21 @@
         <p id="links-info"></p>
         <table id="links-table" border="1" cellpadding="4">
             <thead>
-                <tr>
-                    <th>Song</th>
-                    <th>Link</th>
-                    <th>Verse</th>
-                    <!-- <th>Target</th> -->
-                    <!-- <th>Added</th> -->
-                    <th>Delete</th>
-                </tr>
-            </thead>
-            <tbody></tbody>
+                        <tr>
+                            <th>Song</th>
+                            <th>Link</th>
+                            <th>Verse</th>
+                            <th id="delete-header" style="display:none">Delete</th>
+                        </tr>
+                    </thead>
+            <tbody id="links-tbody"></tbody>
         </table>
         <table>
             <!-- admin controls (local-only token) -->
-            <div class="admin-controls" style="display:flex;align-items:center;gap:0px;margin-right:8px; margin-top: 30px;">
-                <button id="btn-admin-set">Set Admin Token</button>
+            <div class="admin-controls" style="display:flex;align-items:center;gap:8px;margin-right:8px; margin-top: 30px;">
+                <button id="btn-admin-set"">Set Admin Token</button>
                 <button id="btn-admin-clear" style="display:none">Clear Admin</button>
+                <button id="btn-stats" style="display:none">📊 Visit Stats</button>
             </div>
         </table>
     </section>
@@ -404,29 +403,29 @@
                 // tdTarget.textContent = row.target_kind;
                 // tr.appendChild(tdTarget);
 
-                const tdDel = document.createElement("td");
-                const btn = document.createElement("button");
-                btn.textContent = "🗑";
+                // Delete column (only create if admin is logged in)
                 const adminToken = localStorage.getItem("adminToken");
-                if (!adminToken) {
-                    btn.style.display = "none"; // hide unless admin token present locally
-                }
-                btn.addEventListener("click", async () => {
-                    if (!confirm("Delete this link?")) return;
-                    const tokenToSend = localStorage.getItem("adminToken") || "";
-                    const res = await fetch(`/api/links/${row.id}`, {
-                        method: "DELETE",
-                        headers: { "x-admin-token": tokenToSend },
+                if (adminToken) {
+                    const tdDel = document.createElement("td");
+                    const btn = document.createElement("button");
+                    btn.textContent = "🗑";
+                    btn.addEventListener("click", async () => {
+                        if (!confirm("Delete this link?")) return;
+                        const tokenToSend = localStorage.getItem("adminToken") || "";
+                        const res = await fetch(`/api/links/${row.id}`, {
+                            method: "DELETE",
+                            headers: { "x-admin-token": tokenToSend },
+                        });
+                        if (!res.ok) {
+                            const d = await res.json().catch(() => ({}));
+                            alert("Delete failed: " + (d.error || res.status));
+                            return;
+                        }
+                        await loadLinksForCurrentSelection();
                     });
-                    if (!res.ok) {
-                        const d = await res.json().catch(() => ({}));
-                        alert("Delete failed: " + (d.error || res.status));
-                        return;
-                    }
-                    await loadLinksForCurrentSelection();
-                });
-                tdDel.appendChild(btn);
-                tr.appendChild(tdDel);
+                    tdDel.appendChild(btn);
+                    tr.appendChild(tdDel);
+                }
 
                 tbody.appendChild(tr);
             });
@@ -481,6 +480,11 @@
             const token = localStorage.getItem("adminToken");
             document.getElementById("btn-admin-set").style.display = token ? "none" : "";
             document.getElementById("btn-admin-clear").style.display = token ? "" : "none";
+            document.getElementById("btn-stats").style.display = token ? "" : "none";
+            
+            // show/hide delete column header
+            const deleteHeader = document.getElementById("delete-header");
+            deleteHeader.style.display = token ? "" : "none";
         }
 
         document.getElementById("btn-admin-set").addEventListener("click", async () => {
@@ -497,10 +501,9 @@
                     alert("Invalid admin token: " + (body.error || res.status));
                     return;
                 }
-                // token valid: store and re-render so delete buttons appear
                 localStorage.setItem("adminToken", candidate);
                 updateAdminUI();
-                await loadLinksForCurrentSelection();
+                await loadLinksForCurrentSelection(); // re-render table to show delete buttons
                 alert("Admin token accepted. Delete buttons are now visible.");
             } catch (err) {
                 alert("Verification failed. Check server and try again.");
@@ -511,7 +514,39 @@
         document.getElementById("btn-admin-clear").addEventListener("click", async () => {
             localStorage.removeItem("adminToken");
             updateAdminUI();
-            await loadLinksForCurrentSelection(); // re-render to hide delete buttons
+            await loadLinksForCurrentSelection(); // re-render table to hide delete buttons
+        });
+
+        // stats button handler
+        document.getElementById("btn-stats").addEventListener("click", async () => {
+            const token = localStorage.getItem("adminToken");
+            if (!token) {
+                alert("Admin token required");
+                return;
+            }
+            
+            try {
+                const res = await fetch("/api/stats", {
+                    headers: { "x-admin-token": token }
+                });
+                
+                if (!res.ok) {
+                    const body = await res.json().catch(() => ({}));
+                    alert("Failed to load stats: " + (body.error || res.status));
+                    return;
+                }
+                
+                const stats = await res.json();
+                const message = `📊 Website Visit Statistics\n\n` +
+                    `Total page visits: ${stats.total}\n` +
+                    `Unique visitors (different IPs): ${stats.unique}\n` +
+                    `Visits in last 24 hours: ${stats.today}`;
+                    
+                alert(message);
+            } catch (err) {
+                alert("Failed to load stats: " + err.message);
+                console.error(err);
+            }
         });
 
         updateAdminUI();
