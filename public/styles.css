@@ -495,3 +495,18 @@ html, body {
         max-width: none;
     }
 }
+
+/* make logo bigger on mobile */
+@media (max-width: 768px) {
+  .site-logo {
+    width: 70px;
+    height: 70px;
+  }
+}
+
+@media (max-width: 480px) {
+  .site-logo {
+    width:70px;
+    height: 70px;
+  }
+}
