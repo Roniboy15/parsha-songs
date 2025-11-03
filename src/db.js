@@ -224,6 +224,25 @@ async function deleteSong(id) {
   }
 }
 
+// if your connection is `pool`:
+const db = usePg ? pgPool : sqliteDb;
+export default db;
+
+// helper to get total distinct songs across links
+export async function getTotalSongs() {
+  if (usePg) {
+    const { rows } = await pgPool.query(
+      `SELECT COUNT(DISTINCT song_id) as total FROM links`
+    );
+    return rows[0]?.total || 0;
+  } else {
+    const row = sqliteDb
+      .prepare(`SELECT COUNT(DISTINCT song_id) as total FROM links`)
+      .get();
+    return row?.total || 0;
+  }
+}
+
 export {
   usePg,
   findSongByTitleVersion,

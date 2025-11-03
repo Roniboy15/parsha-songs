@@ -12,6 +12,8 @@
     <header class="site-header">
         <div class="site-title">
             <h1 class="main-title">Make Our Torah Sing</h1>
+            <div id="total-songs" class="songs-count"></div>
+
         </div>
         <!-- put your logo image at public/logo.png -->
         <img src="logo.png" alt="Logo" class="site-logo" />
@@ -48,9 +50,8 @@
         <h2>3. Song details</h2>
         <input id="song-title" placeholder="Song name" />
         <input id="song-link" placeholder="Link (optional)" />
-        <input id="verse-ref" placeholder="Verse ref (optional)" />
+        <input id="verse-ref" placeholder="Verse number and chapter (optional)" />
         <button id="btn-save">Save</button>
-        <p id="save-result"></p>
     </section>
 
     <section>
@@ -198,68 +199,100 @@
 
         // 5) save new link
         document.getElementById("btn-save").addEventListener("click", async () => {
-            const title = document.getElementById("song-title").value;
-            const link = document.getElementById("song-link").value;
-            const verse = document.getElementById("verse-ref").value;
+            const title = document.getElementById("song-title").value.trim();
+            const link = document.getElementById("song-link").value.trim();
+            const verse = document.getElementById("verse-ref").value.trim();
+
+            // Validate inputs
             if (!title || !selectedParashaId) {
                 alert("Need song name + parasha");
                 return;
             }
+
+            if (verse.length > 60) {
+                alert("Too much text, please just add the Chapter and Verse number");
+                return;
+            }
+
+            // URL validation
+            let external_url = null;
+            if (link) {
+                if (!link.startsWith('http://') && !link.startsWith('https://')) {
+                    alert("URL must start with http:// or https://");
+                    return;
+                }
+                try {
+                    new URL(link);
+                    external_url = link;
+                } catch (e) {
+                    alert("Invalid URL format. Please enter a complete URL (e.g., https://youtube.com/watch?v=...)");
+                    return;
+                }
+            }
+
             const payload = {
                 parasha_id: selectedParashaId,
                 target_kind: selectedKind,
-                song: { title, external_url: link },
-                verse_ref: verse
+                song: {
+                    title,
+                    external_url
+                },
+                verse_ref: verse || null
             };
+
             if (selectedKind === "haftarah") {
                 payload.target_id = selectedHaftarahId;
             }
 
-            const res = await fetch("/api/links", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "x-contrib-token": window.CONTRIB_TOKEN || ""
-                },
-                body: JSON.stringify(payload)
-            });
+            try {
+                const res = await fetch("/api/links", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "x-contrib-token": window.CONTRIB_TOKEN || ""
+                    },
+                    body: JSON.stringify(payload)
+                });
 
+                const data = await res.json();
 
-            if (!res.ok) {
-                const text = await res.text();
-                document.getElementById("save-result").textContent =
-                    `Error (${res.status}): ${text}`;
-                return;
-            }
-            const data = await res.json();
-            document.getElementById("save-result").textContent = data.ok
-                ? "Saved #" + data.link_id
-                : "Error: " + (data.error || "unknown");
+                if (!res.ok) {
+                    throw new Error(`Error (${res.status}): ${JSON.stringify(data)}`);
+                }
 
-            if (data.ok) {
                 await loadLinksForCurrentSelection();
-            }
 
+                // Clear inputs after successful save
+                document.getElementById("song-title").value = "";
+                document.getElementById("song-link").value = "";
+                document.getElementById("verse-ref").value = "";
+            } catch (err) {
+                document.getElementById("save-result").textContent = err.message;
+            }
         });
 
         // 6) load links for current parasha/kind
         async function loadLinksForCurrentSelection() {
             if (!selectedParashaId) return;
 
-            const params = new URLSearchParams({ parasha_id: selectedParashaId });
-            // show only selected type
-            params.set("target_kind", selectedKind);
+            // Get total songs count first
+            const totalRes = await fetch("/api/total-songs");
+            const totalData = await totalRes.json();
 
+            // Then get current parasha songs
+            const params = new URLSearchParams({ parasha_id: selectedParashaId });
+            params.set("target_kind", selectedKind);
             const res = await fetch(`/api/links?${params.toString()}`);
             const rows = await res.json();
 
-            const info = document.getElementById("links-info");
+            // Update both counts
+            const totalSongs = document.getElementById("total-songs");
+            // totalSongs.textContent = `Total songs: ${totalData.total} (${rows.length} in current selection)`;
+            totalSongs.textContent = `${totalData.total} songs connected so far`;
+
+            // Clear existing table content
             const tbody = document.querySelector("#links-table tbody");
             tbody.innerHTML = "";
-
-            info.textContent = rows.length
-                ? `Found ${rows.length} link(s).`
-                : "No links yet.";
 
             rows.forEach((row) => {
                 const tr = document.createElement("tr");
@@ -270,27 +303,37 @@
 
                 const tdUrl = document.createElement("td");
                 if (row.song_url) {
+                    // Always create a link element if we have a URL
                     const a = document.createElement("a");
                     a.href = row.song_url;
-                    a.textContent = "open";
+                    // Show a shorter version of the URL
+                    let displayUrl = row.song_url;
+                    if (displayUrl.length > 40) {
+                        displayUrl = displayUrl.substring(0, 37) + "...";
+                    }
+                    a.textContent = displayUrl;
                     a.target = "_blank";
+                    a.rel = "noopener";
+                    a.style.color = "#0066cc";
+                    a.style.textDecoration = "underline";
                     tdUrl.appendChild(a);
+                    // Add full URL as tooltip
+                    tdUrl.title = row.song_url;
                 } else {
-                    tdUrl.textContent = "";
+                    tdUrl.textContent = "-";
+                    tdUrl.style.color = "#999";
                 }
                 tr.appendChild(tdUrl);
 
                 const tdVerse = document.createElement("td");
                 tdVerse.textContent = row.verse_ref || "";
+                tdVerse.title = row.verse_ref || "";
+                tdVerse.className = "col-verse";
                 tr.appendChild(tdVerse);
 
                 const tdTarget = document.createElement("td");
                 tdTarget.textContent = row.target_kind;
                 tr.appendChild(tdTarget);
-
-                const tdAdded = document.createElement("td");
-                tdAdded.textContent = row.added_at;
-                tr.appendChild(tdAdded);
 
                 const tdDel = document.createElement("td");
                 const btn = document.createElement("button");
@@ -302,7 +345,6 @@
                 });
                 tdDel.appendChild(btn);
                 tr.appendChild(tdDel);
-
 
                 tbody.appendChild(tr);
             });

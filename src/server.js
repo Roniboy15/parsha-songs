@@ -5,14 +5,17 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs/promises";
 import crypto from "node:crypto";
-import {
+import * as dbModule from "./db.js";
+const {
   findSongByTitleVersion,
   insertSong,
   insertLink,
   getLinksByParasha,
   deleteLink,
   deleteSong,
-} from "./db.js";
+} = dbModule;
+// try to find the DB object on common export names
+const db = dbModule.default || dbModule.db || dbModule;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -219,6 +222,17 @@ app.delete("/api/songs/:id", async (req, res) => {
   const { id } = req.params;
   const deleted = await deleteSong(id);
   res.json({ ok: true, deleted_song: deleted });
+});
+
+// total songs endpoint (uses db.js helper that works for both backends)
+app.get("/api/total-songs", async (req, res) => {
+  try {
+    const total = await dbModule.getTotalSongs();
+    res.json({ total });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to get total count" });
+  }
 });
 
 const PORT = process.env.PORT || 3000;

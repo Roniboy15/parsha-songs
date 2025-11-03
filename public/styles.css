@@ -172,3 +172,32 @@ th {
 .links-add {
   display: none !important;
 }
+
+/* keep table cells from expanding when a field contains long text */
+#links-table td,
+#links-table th {
+  max-width: 260px;
+  vertical-align: middle;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* slightly tighter for the verse column */
+#links-table td.col-verse {
+  max-width: 180px;
+}
+
+/* on small screens allow wrapping so content remains readable */
+@media (max-width: 520px) {
+  #links-table td,
+  #links-table th {
+    white-space: normal;
+  }
+}
+
+.songs-count {
+    font-size: 0.9rem;
+    color: #666;
+    margin-top: 4px;
+}
