@@ -11,6 +11,8 @@ section {
     padding: 20px;
     border-radius: 8px;
     margin-bottom: 20px;
+    /* remove any heavy visual depth */
+    box-shadow: none !important;
 }
 
 h1, h2 {
@@ -22,6 +24,12 @@ input, select, button {
     margin: 5px;
     border: 1px solid #ddd;
     border-radius: 4px;
+}
+
+/* make form controls responsive so they don't force horizontal overflow */
+input, select, button, textarea {
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 button {
@@ -42,10 +50,36 @@ table {
     margin-top: 10px;
 }
 
+/* Responsive table: cells wrap instead of expanding the page */
+#links-table {
+  width: 100%;
+  table-layout: fixed; /* lets columns wrap within available width */
+  border-collapse: collapse;
+  word-break: break-word;
+}
+
 th, td {
     border: 1px solid #ddd;
     padding: 12px;
     text-align: left;
+}
+
+#links-table th,
+#links-table td {
+  padding: 8px;
+  vertical-align: top;
+  white-space: normal;      /* allow wrapping on small screens */
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+/* remove the table cell border just for the song-title column */
+#links-table td.col-song,
+#links-table th.col-song {
+  border: none;
+  /* keep the visual spacing consistent */
+  padding-left: 8px;
+  padding-right: 8px;
 }
 
 th {
@@ -55,6 +89,16 @@ th {
 #song-title, #song-link, #verse-ref {
     width: calc(33% - 10px);
     margin-bottom: 10px;
+}
+
+/* Make link cell content wrap nicely and not push width */
+#links-table td a {
+  display: inline-block;
+  max-width: 100%;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  text-decoration: underline;
+  color: #0066cc;
 }
 
 /* header sizing + fixed behavior on wide screens */
@@ -78,8 +122,16 @@ th {
 
 .site-title .main-title {
   margin: 0;
-  font-size: 1.5rem; /* larger title */
+  font-size: 1.75rem; /* increased size */
   line-height: 1.05;
+  letter-spacing: -0.4px;
+}
+
+/* keep title readable on small screens */
+@media (max-width: 420px) {
+  .site-title .main-title {
+    font-size: 1.5rem;
+  }
 }
 
 /* logo default */
@@ -97,8 +149,11 @@ th {
     top: 12px;
     left: 50%;
     transform: translateX(-50%);
+    /* Make header flat: remove shadow, use very light border instead */
+    box-shadow: none !important;
+    /* keep subtle separation from page content */
+    border: 1px solid rgba(0,0,0,0.04);
     background: rgba(255,255,255,0.98);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     border-radius: 8px;
     padding: 14px 24px;
     height: var(--site-header-height);
@@ -183,16 +238,77 @@ th {
   text-overflow: ellipsis;
 }
 
-/* slightly tighter for the verse column */
-#links-table td.col-verse {
+/* clickable verse cell */
+.col-verse {
   max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.clickable-verse {
+  cursor: pointer;
+  color: #0066cc;
+  text-decoration: underline;
 }
 
-/* on small screens allow wrapping so content remains readable */
+/* verse modal */
+.modal {
+  position: fixed;
+  inset: 0;
+  display: none; /* shown via JS */
+  align-items: center;
+  justify-content: center;
+  /* Make modal background and content flatter */
+  background: rgba(0,0,0,0.20); /* slightly lighter overlay */
+  z-index: 1200;
+  padding: 20px;
+}
+.modal-content {
+  background: #fff;
+  max-width: 800px;
+  width: min(95%, 800px);
+  max-height: 80vh;
+  overflow: auto;
+  border-radius: 8px;
+  padding: 16px 20px;
+  /* remove any heavy visual depth */
+  box-shadow: none !important;
+  border: 1px solid rgba(0,0,0,0.06);
+  position: relative;
+}
+.modal-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  border: none;
+  background: transparent;
+  font-size: 1.25rem;
+  cursor: pointer;
+}
+#verse-modal-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  font-family: inherit;
+  font-size: 0.98rem;
+  line-height: 1.4;
+}
+
+/* keep modal usable on very small screens */
+@media (max-width: 420px) {
+  .modal-content { padding: 12px; }
+  .modal-close { font-size: 1rem; top: 6px; right: 8px; }
+}
+
+html, body {
+  overflow-x: hidden;
+}
+
+/* Reduce paddings on very small screens so columns fit */
 @media (max-width: 520px) {
-  #links-table td,
-  #links-table th {
-    white-space: normal;
+  #links-table th, #links-table td {
+    padding: 6px;
+    font-size: 0.95rem;
   }
 }
 
@@ -200,4 +316,67 @@ th {
     font-size: 0.9rem;
     color: #666;
     margin-top: 4px;
+}
+
+/* song title column: shrink / wrap gracefully when titles are long */
+.col-song {
+  max-width: 220px;                  /* reasonable column width on desktop */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;             /* show up to 2 lines, then ellipsize */
+  overflow: hidden;
+  white-space: normal;               /* allow wrapping */
+  text-overflow: ellipsis;
+  word-break: break-word;            /* break long words/URLs */
+  font-size: clamp(0.85rem, 1.1vw, 1rem); /* slightly smaller on narrow viewports */
+  line-height: 1.15;
+  padding-right: 6px;                /* give some room before the next column */
+}
+
+/* make the song column wrap and clamp lines (overrides the earlier nowrap) */
+#links-table td.col-song,
+#links-table th.col-song {
+  white-space: normal !important; /* override global nowrap */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* clamp to up to 3 lines and scale font down a bit on narrow screens */
+.col-song {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;           /* show up to 3 lines */
+  overflow: hidden;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  font-size: clamp(0.78rem, 1.6vw, 1rem);
+  line-height: 1.12;
+  max-width: 260px;
+}
+
+/* ensure links inside song cell wrap and don't force width */
+.col-song a {
+  display: inline;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+/* on very small screens allow three lines to keep readability */
+@media (max-width: 420px) {
+  .col-song {
+    -webkit-line-clamp: 3;
+    max-width: 160px;
+    font-size: clamp(0.78rem, 2.6vw, 0.95rem);
+  }
+
+  .songs-count {
+    font-size: 0.75rem;
+  }
+}
+
+/* bump up the mobile title size (placed at end so it overrides earlier rules) */
+@media (max-width: 420px) {
+  .site-title .main-title {
+    font-size: 1.5rem !important;
+  }
 }

@@ -20,13 +20,13 @@
     </header>
 
     <section>
-        <h2>1. Use today's parasha</h2>
+        <h2>Use today's parasha</h2>
         <button id="btn-current">Load current (diaspora)</button>
         <p id="current-parasha"></p>
     </section>
 
     <section>
-        <h2>2. Or pick from list</h2>
+        <h2>Or pick from list</h2>
         <select id="parsha-list"></select>
 
         <div style="margin-top: 1rem;">
@@ -47,7 +47,7 @@
     </section>
 
     <section>
-        <h2>3. Song details</h2>
+        <h2>Song details</h2>
         <input id="song-title" placeholder="Song name" />
         <input id="song-link" placeholder="Link (optional)" />
         <input id="verse-ref" placeholder="Verse number and chapter (optional)" />
@@ -55,7 +55,7 @@
     </section>
 
     <section>
-        <h2>4. Songs for this selection</h2>
+        <h2>Songs for this selection</h2>
         <p id="links-info"></p>
         <table id="links-table" border="1" cellpadding="4">
             <thead>
@@ -63,7 +63,7 @@
                     <th>Song</th>
                     <th>Link</th>
                     <th>Verse</th>
-                    <th>Target</th>
+                    <!-- <th>Target</th> -->
                     <!-- <th>Added</th> -->
                     <th>Delete</th>
                 </tr>
@@ -299,6 +299,8 @@
 
                 const tdSong = document.createElement("td");
                 tdSong.textContent = row.song_title;
+                tdSong.className = "col-song";
+                tdSong.title = row.song_title; // show full title on hover
                 tr.appendChild(tdSong);
 
                 const tdUrl = document.createElement("td");
@@ -326,14 +328,30 @@
                 tr.appendChild(tdUrl);
 
                 const tdVerse = document.createElement("td");
-                tdVerse.textContent = row.verse_ref || "";
-                tdVerse.title = row.verse_ref || "";
-                tdVerse.className = "col-verse";
+                // show truncated verse in the table and open a modal on click for longer text
+                const fullVerse = row.verse_ref || "";
+                const tdVerseTextMax = 30; // how many chars to show in table before truncating
+                if (fullVerse) {
+                    if (fullVerse.length > tdVerseTextMax) {
+                        const short = fullVerse.slice(0, tdVerseTextMax - 3) + "...";
+                        tdVerse.textContent = short;
+                        tdVerse.title = "Click to read full text";
+                        tdVerse.className = "col-verse clickable-verse";
+                        tdVerse.addEventListener("click", () => openVerseModal(fullVerse));
+                    } else {
+                        tdVerse.textContent = fullVerse;
+                        tdVerse.title = fullVerse;
+                        tdVerse.className = "col-verse";
+                    }
+                } else {
+                    tdVerse.textContent = "";
+                    tdVerse.className = "col-verse";
+                }
                 tr.appendChild(tdVerse);
 
-                const tdTarget = document.createElement("td");
-                tdTarget.textContent = row.target_kind;
-                tr.appendChild(tdTarget);
+                // const tdTarget = document.createElement("td");
+                // tdTarget.textContent = row.target_kind;
+                // tr.appendChild(tdTarget);
 
                 const tdDel = document.createElement("td");
                 const btn = document.createElement("button");
@@ -351,6 +369,48 @@
         }
 
 
+
+        // modal markup (inserted once; functions below will use these elements)
+        // place this markup at the end of the existing <script> or right before </body>
+        const modalHtml = `
+        <div id="verse-modal" class="modal" aria-hidden="true" style="display:none">
+          <div class="modal-content" role="dialog" aria-modal="true" aria-label="Full verse text">
+            <button id="verse-modal-close" class="modal-close" aria-label="Close">×</button>
+            <pre id="verse-modal-text"></pre>
+          </div>
+        </div>
+        `;
+        // append modal to body if not present
+        if (!document.getElementById("verse-modal")) {
+            document.body.insertAdjacentHTML("beforeend", modalHtml);
+        }
+
+        // modal control functions
+        function openVerseModal(text) {
+            const modal = document.getElementById("verse-modal");
+            const pre = document.getElementById("verse-modal-text");
+            pre.textContent = text;
+            modal.style.display = "flex";
+            modal.setAttribute("aria-hidden", "false");
+            document.body.style.overflow = "hidden";
+            document.getElementById("verse-modal-close").focus();
+        }
+        function closeVerseModal() {
+            const modal = document.getElementById("verse-modal");
+            modal.style.display = "none";
+            modal.setAttribute("aria-hidden", "true");
+            document.body.style.overflow = "";
+        }
+        // close handlers
+        document.addEventListener("click", (e) => {
+            const modal = document.getElementById("verse-modal");
+            if (!modal) return;
+            if (e.target && e.target.id === "verse-modal-close") closeVerseModal();
+            if (e.target === modal) closeVerseModal();
+        });
+        document.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") closeVerseModal();
+        });
 
         // initial load
         loadParshiot();
