@@ -242,10 +242,11 @@ if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
     });
 }
 
-// helper to notify an external webhook or email (optional)
+// replace the notifyNewLink function with this API-based version:
 async function notifyNewLink(payload) {
   const webhook = process.env.NOTIFY_WEBHOOK;
   const notifyEmail = process.env.NOTIFY_EMAIL;
+  const brevoApiKey = process.env.BREVO_API_KEY; // add this env var
 
   // 1) webhook if configured
   if (webhook) {
@@ -261,7 +262,51 @@ async function notifyNewLink(payload) {
     }
   }
 
-  // 2) email if SMTP configured and recipient provided
+  // 2) Brevo API (no SMTP port needed)
+  if (brevoApiKey && notifyEmail) {
+    try {
+      const subject = `New song added: ${payload.song_title || "(no title)"}`;
+      const textLines = [
+        `Parasha: ${payload.parasha_id}`,
+        `Target: ${payload.target_kind}${payload.target_id ? " / " + payload.target_id : ""}`,
+        `Title: ${payload.song_title || ""}`,
+        `URL: ${payload.song_url || ""}`,
+        `Verse: ${payload.verse_ref || ""}`,
+        `Added by: ${payload.added_by || ""}`,
+        `ID: ${payload.link_id}`,
+        `Time: ${payload.timestamp}`,
+      ];
+      
+      const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+          "accept": "application/json",
+          "api-key": brevoApiKey,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          sender: { 
+            email: process.env.NOTIFY_FROM || "noreply@example.com",
+            name: "Parsha Songs"
+          },
+          to: [{ email: notifyEmail }],
+          subject: subject,
+          textContent: textLines.join("\n"),
+          htmlContent: `<pre style="font-family:inherit">${textLines.join("\n")}</pre>`
+        })
+      });
+      
+      if (!response.ok) {
+        const err = await response.text();
+        throw new Error(`Brevo API error: ${err}`);
+      }
+      return;
+    } catch (err) {
+      console.error("Brevo API notify failed:", err?.message || err);
+    }
+  }
+
+  // 3) fallback: SMTP (will timeout on Render free tier)
   if (mailTransporter && notifyEmail) {
     try {
       const subject = `New song added: ${payload.song_title || "(no title)"}`;
