@@ -239,9 +239,9 @@
             const payload = {
                 parasha_id: selectedParashaId,
                 target_kind: selectedKind,
-                song: {
+                song: { 
                     title,
-                    external_url
+                    external_url 
                 },
                 verse_ref: verse || null
             };
@@ -250,30 +250,38 @@
                 payload.target_id = selectedHaftarahId;
             }
 
+            // Build headers: always include contrib token, and admin token if present
+            const headers = {
+                "Content-Type": "application/json",
+                "x-contrib-token": window.CONTRIB_TOKEN || ""
+            };
+            
+            const adminToken = localStorage.getItem("adminToken");
+            if (adminToken) {
+                headers["x-admin-token"] = adminToken;
+            }
+
             try {
                 const res = await fetch("/api/links", {
                     method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "x-contrib-token": window.CONTRIB_TOKEN || ""
-                    },
+                    headers: headers,
                     body: JSON.stringify(payload)
                 });
 
                 const data = await res.json();
-
+                
                 if (!res.ok) {
                     throw new Error(`Error (${res.status}): ${JSON.stringify(data)}`);
                 }
 
                 await loadLinksForCurrentSelection();
-
+                
                 // Clear inputs after successful save
                 document.getElementById("song-title").value = "";
                 document.getElementById("song-link").value = "";
                 document.getElementById("verse-ref").value = "";
             } catch (err) {
-                document.getElementById("save-result").textContent = err.message;
+                alert("Save failed: " + err.message);
             }
         });
 

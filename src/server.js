@@ -198,18 +198,23 @@ app.post("/api/links", async (req, res) => {
     added_by: added_by || null,
   });
 
-  // notify webhook or email
-  notifyNewLink({
-    parasha_id,
-    target_kind,
-    target_id,
-    song_title: song.title,
-    song_url: song.external_url,
-    verse_ref,
-    added_by,
-    link_id: newId,
-    timestamp: new Date().toISOString(),
-  });
+  // only notify if admin token is NOT present (skip notifications during admin testing)
+  const adminToken = req.headers["x-admin-token"] || req.query.admin || null;
+  const expectedAdmin = process.env.ADMIN_TOKEN || null;
+  const isAdmin = expectedAdmin && adminToken === expectedAdmin;
+  if (!isAdmin) {
+    // notify admin / webhook about new link (fire-and-forget)
+    notifyNewLink({
+      link_id: newId,
+      parasha_id,
+      target_kind,
+      song_title: cleanTitle,
+      song_url: cleanUrl,
+      verse_ref: verse_ref || null,
+      added_by: added_by || null,
+      timestamp: new Date().toISOString(),
+    }).catch(() => {});
+  }
 
   res.json({ ok: true, link_id: newId });
 });
@@ -220,13 +225,21 @@ if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
   mailTransporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT || 587),
-    secure:
-      process.env.SMTP_SECURE === "1" || process.env.SMTP_SECURE === "true",
+    secure: process.env.SMTP_SECURE === "1" || process.env.SMTP_SECURE === "true",
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
   });
+
+  // verify and log result
+  mailTransporter.verify()
+    .then(() => {
+      console.log("SMTP transporter verified");
+    })
+    .catch((err) => {
+      console.error("SMTP transporter verify failed:", err && err.message ? err.message : err);
+    });
 }
 
 // helper to notify an external webhook or email (optional)
@@ -327,6 +340,28 @@ app.get("/api/admin/verify", (req, res) => {
     return res.json({ ok: true });
   } else {
     return res.status(401).json({ ok: false, error: "invalid-admin-token" });
+  }
+});
+
+// test notification endpoint
+app.post("/api/test-notify", async (req, res) => {
+  const sample = {
+    link_id: "TEST-123",
+    parasha_id: "bereshit",
+    target_kind: "parasha",
+    target_id: null,
+    song_title: "Test Song",
+    song_url: "https://example.com/test",
+    verse_ref: "Genesis 1:1",
+    added_by: "tester",
+    timestamp: new Date().toISOString(),
+  };
+  try {
+    await notifyNewLink(sample);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("test-notify failed:", err);
+    res.status(500).json({ ok: false, error: err.message || String(err) });
   }
 });
 
