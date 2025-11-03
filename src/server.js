@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import fs from "node:fs/promises";
 import crypto from "node:crypto";
 import * as dbModule from "./db.js";
+import nodemailer from "nodemailer";
 const {
   findSongByTitleVersion,
   insertSong,
@@ -197,8 +198,86 @@ app.post("/api/links", async (req, res) => {
     added_by: added_by || null,
   });
 
+  // notify webhook or email
+  notifyNewLink({
+    parasha_id,
+    target_kind,
+    target_id,
+    song_title: song.title,
+    song_url: song.external_url,
+    verse_ref,
+    added_by,
+    link_id: newId,
+    timestamp: new Date().toISOString(),
+  });
+
   res.json({ ok: true, link_id: newId });
 });
+
+// create mail transporter if SMTP env provided
+let mailTransporter = null;
+if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+  mailTransporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT || 587),
+    secure:
+      process.env.SMTP_SECURE === "1" || process.env.SMTP_SECURE === "true",
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+  });
+}
+
+// helper to notify an external webhook or email (optional)
+async function notifyNewLink(payload) {
+  const webhook = process.env.NOTIFY_WEBHOOK;
+  const notifyEmail = process.env.NOTIFY_EMAIL;
+
+  // 1) webhook if configured
+  if (webhook) {
+    try {
+      await fetch(webhook, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      return;
+    } catch (err) {
+      console.error("webhook notify failed:", err?.message || err);
+    }
+  }
+
+  // 2) email if SMTP configured and recipient provided
+  if (mailTransporter && notifyEmail) {
+    try {
+      const subject = `New song added: ${payload.song_title || "(no title)"}`;
+      const textLines = [
+        `Parasha: ${payload.parasha_id}`,
+        `Target: ${payload.target_kind}${payload.target_id ? " / " + payload.target_id : ""}`,
+        `Title: ${payload.song_title || ""}`,
+        `URL: ${payload.song_url || ""}`,
+        `Verse: ${payload.verse_ref || ""}`,
+        `Added by: ${payload.added_by || ""}`,
+        `ID: ${payload.link_id}`,
+        `Time: ${payload.timestamp}`,
+      ];
+      await mailTransporter.sendMail({
+        from: process.env.NOTIFY_FROM || process.env.SMTP_USER,
+        to: notifyEmail,
+        subject,
+        text: textLines.join("\n"),
+        html: `<pre style="font-family:inherit">${textLines.join("\n")}</pre>`,
+      });
+      return;
+    } catch (err) {
+      console.error("email notify failed:", err?.message || err);
+    }
+  }
+
+  // fallback
+  console.log("New link added:", payload);
+}
 
 // 4) GET /api/links
 app.get("/api/links", async (req, res) => {
@@ -232,6 +311,22 @@ app.get("/api/total-songs", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to get total count" });
+  }
+});
+
+// admin token verification endpoint (used by the client to validate token)
+app.get("/api/admin/verify", (req, res) => {
+  const clientToken =
+    req.headers["x-admin-token"] || req.query.admin || req.query.token || null;
+  const expected = process.env.ADMIN_TOKEN || null;
+  if (!expected) {
+    // no admin token configured on server
+    return res.status(400).json({ ok: false, error: "no-admin-configured" });
+  }
+  if (clientToken === expected) {
+    return res.json({ ok: true });
+  } else {
+    return res.status(401).json({ ok: false, error: "invalid-admin-token" });
   }
 });
 

@@ -13,9 +13,8 @@
         <div class="site-title">
             <h1 class="main-title">Make Our Torah Sing</h1>
             <div id="total-songs" class="songs-count"></div>
-
         </div>
-        <!-- put your logo image at public/logo.png -->
+
         <img src="logo.png" alt="Logo" class="site-logo" />
     </header>
 
@@ -69,6 +68,13 @@
                 </tr>
             </thead>
             <tbody></tbody>
+        </table>
+        <table>
+            <!-- admin controls (local-only token) -->
+            <div class="admin-controls" style="display:flex;align-items:center;gap:0px;margin-right:8px; margin-top: 30px;">
+                <button id="btn-admin-set">Set Admin Token</button>
+                <button id="btn-admin-clear" style="display:none">Clear Admin</button>
+            </div>
         </table>
     </section>
 
@@ -356,9 +362,22 @@
                 const tdDel = document.createElement("td");
                 const btn = document.createElement("button");
                 btn.textContent = "🗑";
+                const adminToken = localStorage.getItem("adminToken");
+                if (!adminToken) {
+                    btn.style.display = "none"; // hide unless admin token present locally
+                }
                 btn.addEventListener("click", async () => {
                     if (!confirm("Delete this link?")) return;
-                    await fetch(`/api/links/${row.id}`, { method: "DELETE" });
+                    const tokenToSend = localStorage.getItem("adminToken") || "";
+                    const res = await fetch(`/api/links/${row.id}`, {
+                        method: "DELETE",
+                        headers: { "x-admin-token": tokenToSend },
+                    });
+                    if (!res.ok) {
+                        const d = await res.json().catch(() => ({}));
+                        alert("Delete failed: " + (d.error || res.status));
+                        return;
+                    }
                     await loadLinksForCurrentSelection();
                 });
                 tdDel.appendChild(btn);
@@ -411,6 +430,46 @@
         document.addEventListener("keydown", (e) => {
             if (e.key === "Escape") closeVerseModal();
         });
+
+        // admin token UI (keeps token only in browser localStorage)
+        function updateAdminUI() {
+            const token = localStorage.getItem("adminToken");
+            document.getElementById("btn-admin-set").style.display = token ? "none" : "";
+            document.getElementById("btn-admin-clear").style.display = token ? "" : "none";
+        }
+
+        document.getElementById("btn-admin-set").addEventListener("click", async () => {
+            const v = prompt("Paste admin token (kept locally only)");
+            if (!v) return;
+            const candidate = v.trim();
+            try {
+                const res = await fetch(`/api/admin/verify`, {
+                    method: "GET",
+                    headers: { "x-admin-token": candidate },
+                });
+                if (!res.ok) {
+                    const body = await res.json().catch(()=>({}));
+                    alert("Invalid admin token: " + (body.error || res.status));
+                    return;
+                }
+                // token valid: store and re-render so delete buttons appear
+                localStorage.setItem("adminToken", candidate);
+                updateAdminUI();
+                await loadLinksForCurrentSelection();
+                alert("Admin token accepted. Delete buttons are now visible.");
+            } catch (err) {
+                alert("Verification failed. Check server and try again.");
+                console.error(err);
+            }
+        });
+
+        document.getElementById("btn-admin-clear").addEventListener("click", async () => {
+            localStorage.removeItem("adminToken");
+            updateAdminUI();
+            await loadLinksForCurrentSelection(); // re-render to hide delete buttons
+        });
+
+        updateAdminUI();
 
         // initial load
         loadParshiot();
