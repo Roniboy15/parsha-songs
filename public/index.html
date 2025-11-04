@@ -3,15 +3,33 @@
 
 <head>
     <meta charset="UTF-8" />
-    <title>Parsha ↔ Songs</title>
+    <title>Parsha-Songs</title>
     <link rel="stylesheet" href="styles.css">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- Open Graph meta tags for link previews -->
+    <meta property="og:title" content="Make the Parasha Sing" />
+    <meta property="og:description" content="Find and share songs that connect to weekly Torah portions (Parshiot) and Haftarah readings" />
+    <meta property="og:image" content="https://parsha-songs.onrender.com/logo.png" />
+    <meta property="og:image:alt" content="Parsha Songs Logo" />
+    <meta property="og:url" content="https://parsha-songs.onrender.com" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Parsha Songs" />
+    
+    <!-- Twitter Card meta tags -->
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Make the Parasha Sing" />
+    <meta name="twitter:description" content="Find and share songs that connect to weekly Torah portions (Parshiot) and Haftarah readings" />
+    <meta name="twitter:image" content="https://parsha-songs.onrender.com/logo.png" />
+    
+    <!-- General meta tags -->
+    <meta name="description" content="Find and share songs that connect to weekly Torah portions (Parshiot) and Haftarah readings" />
 </head>
 
 <body>
     <header class="site-header">
         <div class="site-title">
-            <h1 class="main-title">Make Our Torah Sing</h1>
+            <h1 class="main-title">Make the Parasha Sing</h1>
             <div id="total-songs" class="songs-count"></div>
         </div>
 
@@ -19,8 +37,8 @@
     </header>
 
     <section>
-        <h2>Use today's parasha</h2>
-        <button id="btn-current">Load current (diaspora)</button>
+        <h2>Use this week's parasha</h2>
+        <button id="btn-current">Load parasha (golus)</button>
         <p id="current-parasha"></p>
     </section>
 
@@ -46,7 +64,7 @@
     </section>
 
     <section>
-        <h2>Song details</h2>
+        <h2>Connect a new song</h2>
         <input id="song-title" placeholder="Song name" />
         <input id="song-link" placeholder="Link (optional)" />
         <input id="verse-ref" placeholder="Verse number and chapter (optional)" />
@@ -54,7 +72,7 @@
     </section>
 
     <section>
-        <h2>Songs for this selection</h2>
+        <h2 id="songs-section-title">Songs for this selection</h2>
         <p id="links-info"></p>
         <table id="links-table" border="1" cellpadding="4">
             <thead>
@@ -119,6 +137,7 @@
         let selectedParashaId = null;
         let selectedKind = "parasha";
         let selectedHaftarahId = null;
+        let selectedDisplayName = ""; // Add this variable
 
         // 1) load parshiot and build dropdown
         async function loadParshiot() {
@@ -154,6 +173,7 @@
             // default selection
             if (parshiot.length) {
                 selectedParashaId = parshiot[0].id;
+                updateSelectedDisplayName(); // Add this call
                 populateHaftarot(selectedParashaId);
                 await loadLinksForCurrentSelection(); // show initial links
             }
@@ -161,9 +181,38 @@
             // when user changes parasha
             select.addEventListener("change", async (e) => {
                 selectedParashaId = e.target.value;
+                updateSelectedDisplayName(); // Add this call
                 populateHaftarot(selectedParashaId);
                 await loadLinksForCurrentSelection();
             });
+        }
+
+        // Add this new function
+        function updateSelectedDisplayName() {
+            const parasha = ALL_PARSHIOT.find((p) => p.id === selectedParashaId);
+            if (!parasha) {
+                selectedDisplayName = "this selection";
+                updateSectionTitle();
+                return;
+            }
+
+            if (selectedKind === "parasha") {
+                selectedDisplayName = `Parashat ${parasha.name_en}`;
+            } else if (selectedKind === "haftarah") {
+                const haftarah = parasha.haftarot?.diaspora?.find(h => h.id === selectedHaftarahId);
+                if (haftarah) {
+                    selectedDisplayName = `${haftarah.name} (Haftarah for ${parasha.name_en})`;
+                } else {
+                    selectedDisplayName = `Haftarah for ${parasha.name_en}`;
+                }
+            }
+            updateSectionTitle();
+        }
+
+        // Add this new function
+        function updateSectionTitle() {
+            const title = document.getElementById("songs-section-title");
+            title.textContent = `Songs for ${selectedDisplayName}`;
         }
 
         // 2) fill haftarot for a given parasha
@@ -188,8 +237,16 @@
             });
 
             selectedHaftarahId = list.length ? list[0].id : null;
+            updateSelectedDisplayName(); // Add this call
             wrap.style.display =
                 selectedKind === "haftarah" && list.length ? "block" : "none";
+
+            // Add haftarah selection change listener
+            sel.addEventListener("change", (e) => {
+                selectedHaftarahId = e.target.value;
+                updateSelectedDisplayName();
+                loadLinksForCurrentSelection();
+            });
         }
 
         // 3) load current parasha from backend/he bcal
@@ -222,11 +279,10 @@
             }
 
             // update haftarot & table
+            updateSelectedDisplayName(); // Add this call
             populateHaftarot(selectedParashaId);
             await loadLinksForCurrentSelection();
         });
-
-
 
         // 4) radio buttons (parasha / haftarah)
         document
@@ -234,6 +290,7 @@
             .forEach((input) => {
                 input.addEventListener("change", async (e) => {
                     selectedKind = e.target.value;
+                    updateSelectedDisplayName(); // Add this call
                     populateHaftarot(selectedParashaId);
                     await loadLinksForCurrentSelection();
                 });
