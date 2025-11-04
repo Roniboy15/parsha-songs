@@ -6,24 +6,32 @@
     <title>Parsha-Songs</title>
     <link rel="stylesheet" href="styles.css">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    
+
     <!-- Open Graph meta tags for link previews -->
     <meta property="og:title" content="Make the Parasha Sing" />
-    <meta property="og:description" content="Find and share songs that connect to weekly Torah portions (Parshiot) and Haftarah readings" />
+    <meta property="og:description"
+        content="Find and share songs that connect to weekly Torah portions (Parshiot) and Haftarah readings" />
     <meta property="og:image" content="https://parsha-songs.onrender.com/logo.png" />
     <meta property="og:image:alt" content="Parsha Songs Logo" />
     <meta property="og:url" content="https://parsha-songs.onrender.com" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Parsha Songs" />
-    
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="1200" />
+    <!-- <meta property="og:image:type" content="image/png" /> -->
+
+
+
     <!-- Twitter Card meta tags -->
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="Make the Parasha Sing" />
-    <meta name="twitter:description" content="Find and share songs that connect to weekly Torah portions (Parshiot) and Haftarah readings" />
+    <meta name="twitter:description"
+        content="Find and share songs that connect to weekly Torah portions (Parshiot) and Haftarah readings" />
     <meta name="twitter:image" content="https://parsha-songs.onrender.com/logo.png" />
-    
+
     <!-- General meta tags -->
-    <meta name="description" content="Find and share songs that connect to weekly Torah portions (Parshiot) and Haftarah readings" />
+    <meta name="description"
+        content="Find and share songs that connect to weekly Torah portions (Parshiot) and Haftarah readings" />
 </head>
 
 <body>
@@ -74,21 +82,22 @@
     <section>
         <h2 id="songs-section-title">Songs for this selection</h2>
         <p id="links-info"></p>
-        <table id="links-table" border="1" cellpadding="4">
+        <table id="links-table" cellpadding="4">
             <thead>
-                        <tr>
-                            <th>Song</th>
-                            <th>Link</th>
-                            <th>Verse</th>
-                            <th id="delete-header" style="display:none">Delete</th>
-                        </tr>
-                    </thead>
+                <tr>
+                    <th>Song</th>
+                    <th>Link</th>
+                    <th>Verse</th>
+                    <th id="delete-header" style="display:none">Delete</th>
+                </tr>
+            </thead>
             <tbody id="links-tbody"></tbody>
         </table>
         <table>
             <!-- admin controls (local-only token) -->
-            <div class="admin-controls" style="display:flex;align-items:center;gap:8px;margin-right:8px; margin-top: 30px;">
-                <button id="btn-admin-set"">Set Admin Token</button>
+            <div class="admin-controls"
+                style="display:flex;align-items:center;gap:8px;margin-right:8px; margin-top: 30px;">
+                <button id="btn-admin-set">Set Admin Token</button>
                 <button id="btn-admin-clear" style="display:none">Clear Admin</button>
                 <button id="btn-stats" style="display:none">📊 Visit Stats</button>
             </div>
@@ -112,8 +121,9 @@
             </div>
             <div class="help-content">
                 <p><strong>What is this?</strong></p>
-                <p>This app helps you find songs that connect to weekly Torah portions (Parshiot) and their Haftarah readings.</p>
-                
+                <p>This app helps you find songs that connect to weekly Torah portions (Parshiot) and their Haftarah
+                    readings.</p>
+
                 <p><strong>How to use:</strong></p>
                 <ol>
                     <li><strong>Select a Parsha:</strong> Choose from the dropdown (e.g., "Bereshit", "Noach")</li>
@@ -125,7 +135,8 @@
                 <p><strong>Tips:</strong></p>
                 <ul>
                     <li>Include YouTube, Spotify, or other music links when possible</li>
-                    <li>Add verse references to show the connection (e.g. "1:22" for perek/chapter 1, pasuk/verse 22)</li>
+                    <li>Add verse references to show the connection (e.g. "1:22" for perek/chapter 1, pasuk/verse 22)
+                    </li>
                     <li>Help build a musical companion to Torah study!</li>
                 </ul>
             </div>
@@ -213,7 +224,7 @@
         function updateSectionTitle() {
             const title = document.getElementById("songs-section-title");
             title.textContent = `Songs for ${selectedDisplayName}`;
-            
+
             // Update the connect song title too
             const connectTitle = document.getElementById("connect-song-title");
             connectTitle.textContent = `Connect a new song to ${selectedDisplayName}`;
@@ -336,9 +347,9 @@
             const payload = {
                 parasha_id: selectedParashaId,
                 target_kind: selectedKind,
-                song: { 
+                song: {
                     title,
-                    external_url 
+                    external_url
                 },
                 verse_ref: verse || null
             };
@@ -352,7 +363,7 @@
                 "Content-Type": "application/json",
                 "x-contrib-token": window.CONTRIB_TOKEN || ""
             };
-            
+
             const adminToken = localStorage.getItem("adminToken");
             if (adminToken) {
                 headers["x-admin-token"] = adminToken;
@@ -366,13 +377,13 @@
                 });
 
                 const data = await res.json();
-                
+
                 if (!res.ok) {
                     throw new Error(`Error (${res.status}): ${JSON.stringify(data)}`);
                 }
 
                 await loadLinksForCurrentSelection();
-                
+
                 // Clear inputs after successful save
                 document.getElementById("song-title").value = "";
                 document.getElementById("song-link").value = "";
@@ -542,7 +553,7 @@
             document.getElementById("btn-admin-set").style.display = token ? "none" : "";
             document.getElementById("btn-admin-clear").style.display = token ? "" : "none";
             document.getElementById("btn-stats").style.display = token ? "" : "none";
-            
+
             // show/hide delete column header
             const deleteHeader = document.getElementById("delete-header");
             deleteHeader.style.display = token ? "" : "none";
@@ -558,7 +569,7 @@
                     headers: { "x-admin-token": candidate },
                 });
                 if (!res.ok) {
-                    const body = await res.json().catch(()=>({}));
+                    const body = await res.json().catch(() => ({}));
                     alert("Invalid admin token: " + (body.error || res.status));
                     return;
                 }
@@ -585,24 +596,24 @@
                 alert("Admin token required");
                 return;
             }
-            
+
             try {
                 const res = await fetch("/api/stats", {
                     headers: { "x-admin-token": token }
                 });
-                
+
                 if (!res.ok) {
                     const body = await res.json().catch(() => ({}));
                     alert("Failed to load stats: " + (body.error || res.status));
                     return;
                 }
-                
+
                 const stats = await res.json();
                 const message = `📊 Website Visit Statistics\n\n` +
                     `Total page visits: ${stats.total}\n` +
                     `Unique visitors (different IPs): ${stats.unique}\n` +
                     `Visits in last 24 hours: ${stats.today}`;
-                    
+
                 alert(message);
             } catch (err) {
                 alert("Failed to load stats: " + err.message);
@@ -651,4 +662,5 @@
         });
     </script>
 </body>
+
 </html>

@@ -50,55 +50,57 @@ table {
     margin-top: 10px;
 }
 
-/* Responsive table: cells wrap instead of expanding the page */
+/* Main table styling with consistent borders */
 #links-table {
-  width: 100%;
-  table-layout: fixed; /* lets columns wrap within available width */
-  border-collapse: collapse;
-  word-break: break-word;
-}
-
-th, td {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
     border: 1px solid #ddd;
-    padding: 12px;
-    text-align: left;
+    word-break: break-word;
 }
 
+/* Consistent borders for ALL cells */
 #links-table th,
 #links-table td {
-  padding: 8px;
-  vertical-align: top;
-  white-space: normal;      /* allow wrapping on small screens */
-  word-break: break-word;
-  overflow-wrap: anywhere;
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+    vertical-align: top;
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    max-width: 260px;
 }
 
-/* remove the table cell border just for the song-title column */
-#links-table td.col-song,
-#links-table th.col-song {
-  border: none;
-  /* keep the visual spacing consistent */
-  padding-left: 8px;
-  padding-right: 8px;
-}
-
-th {
+/* Header styling */
+#links-table th {
     background: #f8f9fa;
+    font-weight: bold;
 }
 
-#song-title, #song-link, #verse-ref {
-    width: calc(33% - 10px);
-    margin-bottom: 10px;
-}
 
-/* Make link cell content wrap nicely and not push width */
+/* Link styling within table cells */
 #links-table td a {
-  display: inline-block;
-  max-width: 100%;
-  word-break: break-word;
-  overflow-wrap: anywhere;
-  text-decoration: underline;
-  color: #0066cc;
+    display: inline-block;
+    max-width: 100%;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    text-decoration: underline;
+    color: #0066cc;
+}
+
+/* Verse column styling */
+.col-verse {
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.clickable-verse {
+    cursor: pointer;
+    color: #0066cc;
+    text-decoration: underline;
 }
 
 /* header sizing + fixed behavior on wide screens */
@@ -228,16 +230,6 @@ th {
   display: none !important;
 }
 
-/* keep table cells from expanding when a field contains long text */
-#links-table td,
-#links-table th {
-  max-width: 260px;
-  vertical-align: middle;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
 /* clickable verse cell */
 .col-verse {
   max-width: 180px;
@@ -318,60 +310,40 @@ html, body {
     margin-top: 4px;
 }
 
-/* song title column: shrink / wrap gracefully when titles are long */
-.col-song {
-  max-width: 220px;                  /* reasonable column width on desktop */
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;             /* show up to 2 lines, then ellipsize */
-  overflow: hidden;
-  white-space: normal;               /* allow wrapping */
-  text-overflow: ellipsis;
-  word-break: break-word;            /* break long words/URLs */
-  font-size: clamp(0.85rem, 1.1vw, 1rem); /* slightly smaller on narrow viewports */
-  line-height: 1.15;
-  padding-right: 6px;                /* give some room before the next column */
-}
-
-/* make the song column wrap and clamp lines (overrides the earlier nowrap) */
+/* Song column styling - completely inherit all styling from parent */
 #links-table td.col-song,
 #links-table th.col-song {
-  white-space: normal !important; /* override global nowrap */
-  overflow: hidden;
-  text-overflow: ellipsis;
+    /* Only keep the essential text overflow properties */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 220px;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    font-size: clamp(0.78rem, 1.6vw, 1rem);
+    line-height: 1.12;
+    
+    /* Remove all display properties that might create visual boxes */
+    display: table-cell; /* Force it to behave like a normal table cell */
+    white-space: normal;
 }
 
-/* clamp to up to 3 lines and scale font down a bit on narrow screens */
-.col-song {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;           /* show up to 3 lines */
-  overflow: hidden;
-  word-break: break-word;
-  overflow-wrap: anywhere;
-  font-size: clamp(0.78rem, 1.6vw, 1rem);
-  line-height: 1.12;
-  max-width: 260px;
+/* Links inside song cells */
+#links-table td.col-song a {
+    display: inline;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    text-decoration: underline;
+    color: #0066cc;
 }
 
-/* ensure links inside song cell wrap and don't force width */
-.col-song a {
-  display: inline;
-  word-break: break-word;
-  overflow-wrap: anywhere;
-}
-
-/* on very small screens allow three lines to keep readability */
+/* Mobile responsive adjustments */
 @media (max-width: 420px) {
-  .col-song {
-    -webkit-line-clamp: 3;
-    max-width: 160px;
-    font-size: clamp(0.78rem, 2.6vw, 0.95rem);
-  }
-
-  .songs-count {
-    font-size: 0.75rem;
-  }
+    #links-table td.col-song,
+    #links-table th.col-song {
+        -webkit-line-clamp: 3;
+        max-width: 160px;
+        font-size: clamp(0.78rem, 2.6vw, 0.95rem);
+    }
 }
 
 /* bump up the mobile title size (placed at end so it overrides earlier rules) */
