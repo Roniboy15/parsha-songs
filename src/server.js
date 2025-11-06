@@ -7,6 +7,11 @@ import fs from "node:fs/promises";
 import crypto from "node:crypto";
 import * as dbModule from "./db.js";
 import nodemailer from "nodemailer";
+import { generalLimiter, writeLimiter, sensitiveLimiter, adminLimiter } from "./middlewares/rateLimit.js";
+import { validateBody, validateQuery } from "./middlewares/validate.js";
+import { linkCreateSchema, linksListQuerySchema, currentReadingQuerySchema } from "./validation/schemas.js";
+import { buildSessionMiddleware } from "./auth/session.js";
+import { requireAdmin, attachAdminFlag } from "./middlewares/adminAuth.js";
 const {
   findSongByTitleVersion,
   insertSong,
@@ -23,6 +28,9 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(express.json());
+app.set("trust proxy", 1);
+app.use(await buildSessionMiddleware(dbModule.usePg, db));
+app.use(attachAdminFlag);
 
 // middleware to track visits (MOVE THIS HERE - before routes)
 app.use(async (req, res, next) => {
@@ -51,13 +59,7 @@ app.use(
 
 app.get("/", async (req, res) => {
   const html = await fs.readFile("public/index.html", "utf8");
-  const injected = html.replace(
-    "</head>",
-    `<script>
-       window.CONTRIB_TOKEN = "${process.env.CONTRIB_TOKEN || ""}";
-     </script></head>`
-  );
-  res.type("html").send(injected);
+  res.type("html").send(html);
 });
 
 
@@ -76,9 +78,13 @@ app.get("/api/parshiot", async (req, res) => {
   res.json(parshiot);
 });
 
+// apply a general limiter to read-only API routes
+app.use("/api", generalLimiter);
+
 // 2) GET /api/current-reading  --> find the next shabbat parasha in the coming 7 days
-app.get("/api/current-reading", async (req, res) => {
-  const loc = req.query.loc === "israel" ? "israel" : "diaspora";
+app.get("/api/current-reading", validateQuery(currentReadingQuerySchema), async (req, res) => {
+  // CHANGE THIS LINE:
+  const loc = res.locals.validatedQuery?.loc || "diaspora";
 
   const today = new Date();
   const start = today.toISOString().slice(0, 10);
@@ -145,21 +151,8 @@ app.get("/api/current-reading", async (req, res) => {
 });
 
 // 3) POST /api/links
-app.post("/api/links", async (req, res) => {
-  const clientToken = req.headers["x-contrib-token"] || req.query.token || null;
-  const expected = process.env.CONTRIB_TOKEN || null;
-  if (expected && clientToken !== expected) {
-    return res.status(401).json({ error: "unauthorized" });
-  }
-
-  const {
-    parasha_id,
-    target_kind,
-    target_id,
-    song,
-    verse_ref,
-    added_by,
-  } = req.body;
+app.post("/api/links", writeLimiter, validateBody(linkCreateSchema), async (req, res) => {
+  const { parasha_id, target_kind, target_id, song, verse_ref, added_by } = req.body;
 
   if (!parasha_id || !target_kind || !song?.title) {
     return res.status(400).json({ error: "missing-fields" });
@@ -181,18 +174,9 @@ app.post("/api/links", async (req, res) => {
     }
   }
 
-  const cleanTitle = song.title.replace(/[<>]/g, "").slice(0, 200);
-  const cleanUrl = song.external_url ? song.external_url.trim() : null;
-  if (cleanUrl) {
-    try {
-      const u = new URL(cleanUrl);
-      if (u.protocol !== "http:" && u.protocol !== "https:") {
-        return res.status(400).json({ error: "invalid-url" });
-      }
-    } catch {
-      return res.status(400).json({ error: "invalid-url" });
-    }
-  }
+  // values already sanitized by zod transforms
+  const cleanTitle = song.title;
+  const cleanUrl = song.external_url || null;
 
   // find or create song
   let existing = await findSongByTitleVersion(
@@ -216,24 +200,21 @@ app.post("/api/links", async (req, res) => {
     added_by: added_by || null,
   });
 
-  // only notify if admin token is NOT present (skip notifications during admin testing)
-  const adminToken = req.headers["x-admin-token"] || req.query.admin || null;
-  const expectedAdmin = process.env.ADMIN_TOKEN || null;
-  const isAdmin = expectedAdmin && adminToken === expectedAdmin;
+  // REPLACE THIS SECTION:
+  // only notify if NOT admin session
+  const isAdmin = !!req.session?.isAdmin;
   if (!isAdmin) {
-    // notify admin / webhook about new link (fire-and-forget)
     notifyNewLink({
-      link_id: newId,
       parasha_id,
       target_kind,
-      song_title: cleanTitle,
-      song_url: cleanUrl,
+      target_id,
+      title: cleanTitle,
+      external_url: cleanUrl,
       verse_ref: verse_ref || null,
       added_by: added_by || null,
-      timestamp: new Date().toISOString(),
     }).catch(() => {});
   }
-
+  
   res.json({ ok: true, link_id: newId });
 });
 
@@ -356,24 +337,22 @@ async function notifyNewLink(payload) {
 }
 
 // 4) GET /api/links
-app.get("/api/links", async (req, res) => {
-  const { parasha_id, target_kind } = req.query;
-  if (!parasha_id) {
-    return res.status(400).json({ error: "parasha_id is required" });
-  }
+app.get("/api/links", validateQuery(linksListQuerySchema), async (req, res) => {
+  // CHANGE THESE LINES:
+  const { parasha_id, target_kind } = res.locals.validatedQuery;
   const rows = await getLinksByParasha(parasha_id, target_kind || null);
   res.json(rows);
 });
 
 // 5) DELETE /api/links/:id
-app.delete("/api/links/:id", async (req, res) => {
+app.delete("/api/links/:id", sensitiveLimiter, requireAdmin, async (req, res) => {
   const { id } = req.params;
   const deleted = await deleteLink(id);
   res.json({ ok: true, deleted });
 });
 
 // 6) DELETE /api/songs/:id  (rarely used)
-app.delete("/api/songs/:id", async (req, res) => {
+app.delete("/api/songs/:id", sensitiveLimiter, requireAdmin, async (req, res) => {
   const { id } = req.params;
   const deleted = await deleteSong(id);
   res.json({ ok: true, deleted_song: deleted });
@@ -391,23 +370,37 @@ app.get("/api/total-songs", async (req, res) => {
 });
 
 // admin token verification endpoint (used by the client to validate token)
-app.get("/api/admin/verify", (req, res) => {
-  const clientToken =
-    req.headers["x-admin-token"] || req.query.admin || req.query.token || null;
-  const expected = process.env.ADMIN_TOKEN || null;
+app.post("/api/admin/login", adminLimiter, (req, res) => {
+  const { token } = req.body || {};
+  const expected = process.env.ADMIN_TOKEN;
+  
   if (!expected) {
-    // no admin token configured on server
-    return res.status(400).json({ ok: false, error: "no-admin-configured" });
+    return res.status(400).json({ error: "no-admin-configured" });
   }
-  if (clientToken === expected) {
+  
+  if (token && token === expected) {
+    req.session.isAdmin = true;
     return res.json({ ok: true });
+  }
+  
+  return res.status(401).json({ error: "invalid-token" });
+});
+
+app.post("/api/admin/logout", adminLimiter, (req, res) => {
+  if (req.session) {
+    req.session.destroy(() => res.json({ ok: true }));
   } else {
-    return res.status(401).json({ ok: false, error: "invalid-admin-token" });
+    res.json({ ok: true });
   }
 });
 
+app.get("/api/admin/verify", adminLimiter, (req, res) => {
+  if (req.session?.isAdmin) return res.json({ ok: true });
+  return res.status(401).json({ ok: false, error: "not-admin" });
+});
+
 // test notification endpoint
-app.post("/api/test-notify", async (req, res) => {
+app.post("/api/test-notify", sensitiveLimiter, async (req, res) => {
   const sample = {
     link_id: "TEST-123",
     parasha_id: "bereshit",
@@ -429,19 +422,13 @@ app.post("/api/test-notify", async (req, res) => {
 });
 
 // stats endpoint (admin-only)
-app.get("/api/stats", async (req, res) => {
-  const clientToken = req.headers["x-admin-token"] || req.query.admin || null;
-  const expected = process.env.ADMIN_TOKEN || null;
-  if (expected && clientToken !== expected) {
-    return res.status(401).json({ error: "admin-unauthorized" });
-  }
-  
+app.get("/api/stats", adminLimiter, requireAdmin, async (req, res) => {
   try {
     const stats = await dbModule.getVisitStats();
     res.json(stats);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Failed to get stats" });
+    res.status(500).json({ error: "stats-error" });
   }
 });
 

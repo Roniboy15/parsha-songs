@@ -4,8 +4,57 @@
 <head>
     <meta charset="UTF-8" />
     <title>Parsha-Songs</title>
+
+    <!-- Favicon / tab & device icons -->
+    <link rel="icon" type="image/png" sizes="32x32" href="logo-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="logo-16.png">
+    <!-- Optional: classic .ico (can include multiple sizes) -->
+    <link rel="shortcut icon" href="favicon.ico">
+    <!-- Optional: Apple Touch Icon -->
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+    <!-- Optional: high-res for Android -->
+    <link rel="manifest" href="site.webmanifest">
     <link rel="stylesheet" href="styles.css">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        .loading-dots {
+            display: inline-flex;
+            gap: 6px;
+            align-items: center;
+        }
+
+        .loading-dots span {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #444;
+            display: block;
+            animation: ldots 1s infinite ease-in-out;
+        }
+
+        .loading-dots span:nth-child(2) {
+            animation-delay: .2s;
+        }
+
+        .loading-dots span:nth-child(3) {
+            animation-delay: .4s;
+        }
+
+        @keyframes ldots {
+
+            0%,
+            80%,
+            100% {
+                opacity: .2;
+                transform: scale(.7);
+            }
+
+            40% {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+    </style>
 
     <!-- Open Graph meta tags for link previews -->
     <meta property="og:title" content="Make the Parasha Sing" />
@@ -32,6 +81,9 @@
     <!-- General meta tags -->
     <meta name="description"
         content="Find and share songs that connect to weekly Torah portions (Parshiot) and Haftarah readings" />
+    <link rel="canonical" href="https://parsha-songs.onrender.com/">
+    <!-- optional -->
+    <meta name="keywords" content="Torah, Parsha, Haftarah, Songs, Jewish music">
 </head>
 
 <body>
@@ -46,7 +98,7 @@
 
     <section>
         <h2>Use this week's parasha</h2>
-        <button id="btn-current">Load parasha (golus)</button>
+        <button id="btn-current">Load parasha</button>
         <p id="current-parasha"></p>
     </section>
 
@@ -57,7 +109,7 @@
         <div style="margin-top: 1rem;">
             <label>
                 <input type="radio" name="target-kind" value="parasha" checked />
-                Link to parasha (Torah)
+                Link to parasha
             </label>
             <label>
                 <input type="radio" name="target-kind" value="haftarah" />
@@ -77,11 +129,15 @@
         <input id="song-link" placeholder="Link (optional)" />
         <input id="verse-ref" placeholder="Verse number and chapter (optional)" />
         <button id="btn-save">Save</button>
+
+        <!-- Flash message (success) -->
+        <div id="flash" role="status" aria-live="polite"
+            style="display:none;margin-top:8px;padding:8px 12px;background:#e6ffed;border:1px solid #2ea44f;color:#1b6e3b;border-radius:6px;">
+        </div>
     </section>
 
     <section>
         <h2 id="songs-section-title">Songs for this selection</h2>
-        <p id="links-info"></p>
         <table id="links-table" cellpadding="4">
             <thead>
                 <tr>
@@ -91,17 +147,21 @@
                     <th id="delete-header" style="display:none">Delete</th>
                 </tr>
             </thead>
-            <tbody id="links-tbody"></tbody>
+            <tbody></tbody>
         </table>
-        <table>
-            <!-- admin controls (local-only token) -->
-            <div class="admin-controls"
-                style="display:flex;align-items:center;gap:8px;margin-right:8px; margin-top: 30px;">
-                <button id="btn-admin-set">Set Admin Token</button>
-                <button id="btn-admin-clear" style="display:none">Clear Admin</button>
-                <button id="btn-stats" style="display:none">📊 Visit Stats</button>
-            </div>
-        </table>
+        <p id="links-info"></p>
+        <div id="links-loading" class="loading-dots" aria-live="polite" style="display:none">
+            <span></span><span></span><span></span>
+        </div>
+    </section>
+
+    <section>
+        <h3>Admin</h3>
+        <p id="admin-status"></p>
+        <input id="admin-token-input" type="password" placeholder="Admin token" />
+        <button id="btn-admin-login">Login</button>
+        <button id="btn-admin-logout" style="display:none">Logout</button>
+        <button id="btn-stats" style="display:none">📊 Visit Stats</button>
     </section>
 
     <!-- floating help button -->
@@ -135,10 +195,12 @@
                 <p><strong>Tips:</strong></p>
                 <ul>
                     <li>Include YouTube, Spotify, or other music links when possible</li>
-                    <li>Add verse references to show the connection (e.g. "1:22" for perek/chapter 1, pasuk/verse 22)
-                    </li>
+                    <li>Add verse references to show the connection (e.g. "1:22")</li>
                     <li>Help build a musical companion to Torah study!</li>
                 </ul>
+                <p><strong>Contact:</strong>
+                    <a href="mailto:jaron.111@hotmail.com">jaron.111@hotmail.com</a>
+                </p>
             </div>
         </div>
     </div>
@@ -148,7 +210,16 @@
         let selectedParashaId = null;
         let selectedKind = "parasha";
         let selectedHaftarahId = null;
-        let selectedDisplayName = ""; // Add this variable
+        let selectedDisplayName = "";
+        let currentLinksAbort = null;
+        function beginLinksLoad() {
+            const tbody = document.querySelector("#links-table tbody");
+            if (tbody) tbody.innerHTML = "";
+            const info = document.getElementById("links-info");
+            if (info) info.textContent = "";
+            const loader = document.getElementById("links-loading");
+            if (loader) loader.style.display = "inline-flex";
+        }
 
         // 1) load parshiot and build dropdown
         async function loadParshiot() {
@@ -192,6 +263,7 @@
             // when user changes parasha
             select.addEventListener("change", async (e) => {
                 selectedParashaId = e.target.value;
+                beginLinksLoad();
                 updateSelectedDisplayName(); // Add this call
                 populateHaftarot(selectedParashaId);
                 await loadLinksForCurrentSelection();
@@ -257,15 +329,17 @@
                 selectedKind === "haftarah" && list.length ? "block" : "none";
 
             // Add haftarah selection change listener
-            sel.addEventListener("change", (e) => {
+            sel.onchange = async (e) => {
                 selectedHaftarahId = e.target.value;
+                beginLinksLoad();
                 updateSelectedDisplayName();
-                loadLinksForCurrentSelection();
-            });
+                await loadLinksForCurrentSelection();
+            };
         }
 
         // 3) load current parasha from backend/he bcal
         document.getElementById("btn-current").addEventListener("click", async () => {
+            beginLinksLoad();
             const res = await fetch("/api/current-reading");
             const data = await res.json();
             const p = document.getElementById("current-parasha");
@@ -279,7 +353,7 @@
             const currentName = data.parasha.name_en;
 
             // show it on top
-            p.textContent = `Today / next Shabbat: ${currentName} (${currentId})`;
+            p.textContent = `This Shabbat: ${currentName}`;
 
             // update state
             selectedParashaId = currentId;
@@ -305,116 +379,135 @@
             .forEach((input) => {
                 input.addEventListener("change", async (e) => {
                     selectedKind = e.target.value;
+                    beginLinksLoad();
                     updateSelectedDisplayName(); // Add this call
                     populateHaftarot(selectedParashaId);
                     await loadLinksForCurrentSelection();
                 });
             });
 
-        // 5) save new link
-        document.getElementById("btn-save").addEventListener("click", async () => {
-            const title = document.getElementById("song-title").value.trim();
-            const link = document.getElementById("song-link").value.trim();
-            const verse = document.getElementById("verse-ref").value.trim();
+        // // 5) save new link
+        // document.getElementById("btn-save").addEventListener("click", async () => {
+        //     const title = document.getElementById("song-title").value.trim();
+        //     const link = document.getElementById("song-link").value.trim();
+        //     const verse = document.getElementById("verse-ref").value.trim();
 
-            // Validate inputs
-            if (!title || !selectedParashaId) {
-                alert("Need song name + parasha");
-                return;
-            }
+        //     // Validate inputs
+        //     if (!title || !selectedParashaId) {
+        //         alert("Need song name + parasha");
+        //         return;
+        //     }
 
-            if (verse.length > 60) {
-                alert("Too much text, please just add the Chapter and Verse number");
-                return;
-            }
+        //     if (verse.length > 60) {
+        //         alert("Too much text, please just add the Chapter and Verse number");
+        //         return;
+        //     }
 
-            // URL validation
-            let external_url = null;
-            if (link) {
-                if (!link.startsWith('http://') && !link.startsWith('https://')) {
-                    alert("URL must start with http:// or https://");
-                    return;
-                }
-                try {
-                    new URL(link);
-                    external_url = link;
-                } catch (e) {
-                    alert("Invalid URL format. Please enter a complete URL (e.g., https://youtube.com/watch?v=...)");
-                    return;
-                }
-            }
+        //     // URL validation
+        //     let external_url = null;
+        //     if (link) {
+        //         if (!link.startsWith('http://') && !link.startsWith('https://')) {
+        //             alert("URL must start with http:// or https://");
+        //             return;
+        //         }
+        //         try {
+        //             new URL(link);
+        //             external_url = link;
+        //         } catch (e) {
+        //             alert("Invalid URL format. Please enter a complete URL (e.g., https://youtube.com/watch?v=...)");
+        //             return;
+        //         }
+        //     }
 
-            const payload = {
-                parasha_id: selectedParashaId,
-                target_kind: selectedKind,
-                song: {
-                    title,
-                    external_url
-                },
-                verse_ref: verse || null
-            };
+        //     const payload = {
+        //         parasha_id: selectedParashaId,
+        //         target_kind: selectedKind,
+        //         song: {
+        //             title,
+        //             external_url
+        //         },
+        //         verse_ref: verse || null
+        //     };
 
-            if (selectedKind === "haftarah") {
-                payload.target_id = selectedHaftarahId;
-            }
+        //     if (selectedKind === "haftarah") {
+        //         payload.target_id = selectedHaftarahId;
+        //     }
 
-            // Build headers: always include contrib token, and admin token if present
-            const headers = {
-                "Content-Type": "application/json",
-                "x-contrib-token": window.CONTRIB_TOKEN || ""
-            };
+        //     // REMOVE OLD TOKEN LOGIC - sessions handle auth automatically via cookies
+        //     try {
+        //         const res = await fetch("/api/links", {
+        //             method: "POST",
+        //             headers: {
+        //                 "Content-Type": "application/json"
+        //             },
+        //             body: JSON.stringify(payload)
+        //         });
 
-            const adminToken = localStorage.getItem("adminToken");
-            if (adminToken) {
-                headers["x-admin-token"] = adminToken;
-            }
+        //         const data = await res.json();
 
-            try {
-                const res = await fetch("/api/links", {
-                    method: "POST",
-                    headers: headers,
-                    body: JSON.stringify(payload)
-                });
+        //         if (!res.ok) {
+        //             throw new Error(`Error (${res.status}): ${JSON.stringify(data)}`);
+        //         }
 
-                const data = await res.json();
+        //         await loadLinksForCurrentSelection();
 
-                if (!res.ok) {
-                    throw new Error(`Error (${res.status}): ${JSON.stringify(data)}`);
-                }
+        //         // Clear inputs after successful save
+        //         document.getElementById("song-title").value = "";
+        //         document.getElementById("song-link").value = "";
+        //         document.getElementById("verse-ref").value = "";
 
-                await loadLinksForCurrentSelection();
-
-                // Clear inputs after successful save
-                document.getElementById("song-title").value = "";
-                document.getElementById("song-link").value = "";
-                document.getElementById("verse-ref").value = "";
-            } catch (err) {
-                alert("Save failed: " + err.message);
-            }
-        });
+        //         // Show success message
+        //         const flash = document.getElementById("flash");
+        //         flash.textContent = "Song saved successfully!";
+        //         flash.style.display = "block";
+        //         setTimeout(() => {
+        //             flash.style.display = "none";
+        //         }, 3000);
+        //     } catch (err) {
+        //         alert("Save failed: " + err.message);
+        //     }
+        // });
 
         // 6) load links for current parasha/kind
         async function loadLinksForCurrentSelection() {
             if (!selectedParashaId) return;
+            if (currentLinksAbort) currentLinksAbort.abort();
+            currentLinksAbort = new AbortController();
+            const { signal } = currentLinksAbort;
+            beginLinksLoad();
 
-            // Get total songs count first
-            const totalRes = await fetch("/api/total-songs");
-            const totalData = await totalRes.json();
+            let rows = [];
+            let totalData = { total: 0 };
+            try {
+                const totalRes = await fetch("/api/total-songs", { signal });
+                totalData = await totalRes.json();
+                const params = new URLSearchParams({ parasha_id: selectedParashaId });
+                params.set("target_kind", selectedKind);
+                const res = await fetch(`/api/links?${params.toString()}`, { signal });
+                rows = await res.json();
+            } catch (err) {
+                const loader = document.getElementById("links-loading");
+                if (loader) loader.style.display = "none";
+                if (err.name === "AbortError") return;
+                console.error("Load failed:", err);
+                const info = document.getElementById("links-info");
+                if (info) info.textContent = "Fehler beim Laden.";
+                return;
+            } finally {
+                currentLinksAbort = null;
+            }
 
-            // Then get current parasha songs
-            const params = new URLSearchParams({ parasha_id: selectedParashaId });
-            params.set("target_kind", selectedKind);
-            const res = await fetch(`/api/links?${params.toString()}`);
-            const rows = await res.json();
-
-            // Update both counts
             const totalSongs = document.getElementById("total-songs");
-            // totalSongs.textContent = `Total songs: ${totalData.total} (${rows.length} in current selection)`;
             totalSongs.textContent = `${totalData.total} songs connected so far`;
-
-            // Clear existing table content
             const tbody = document.querySelector("#links-table tbody");
+            if (!tbody) {
+                const loader = document.getElementById("links-loading");
+                if (loader) loader.style.display = "none";
+                return;
+            }
             tbody.innerHTML = "";
+
+            const isAdmin = await adminVerify();
 
             rows.forEach((row) => {
                 const tr = document.createElement("tr");
@@ -422,15 +515,13 @@
                 const tdSong = document.createElement("td");
                 tdSong.textContent = row.song_title;
                 tdSong.className = "col-song";
-                tdSong.title = row.song_title; // show full title on hover
+                tdSong.title = row.song_title;
                 tr.appendChild(tdSong);
 
                 const tdUrl = document.createElement("td");
                 if (row.song_url) {
-                    // Always create a link element if we have a URL
                     const a = document.createElement("a");
                     a.href = row.song_url;
-                    // Show a shorter version of the URL
                     let displayUrl = row.song_url;
                     if (displayUrl.length > 40) {
                         displayUrl = displayUrl.substring(0, 37) + "...";
@@ -441,7 +532,6 @@
                     a.style.color = "#0066cc";
                     a.style.textDecoration = "underline";
                     tdUrl.appendChild(a);
-                    // Add full URL as tooltip
                     tdUrl.title = row.song_url;
                 } else {
                     tdUrl.textContent = "-";
@@ -450,9 +540,8 @@
                 tr.appendChild(tdUrl);
 
                 const tdVerse = document.createElement("td");
-                // show truncated verse in the table and open a modal on click for longer text
                 const fullVerse = row.verse_ref || "";
-                const tdVerseTextMax = 30; // how many chars to show in table before truncating
+                const tdVerseTextMax = 30;
                 if (fullVerse) {
                     if (fullVerse.length > tdVerseTextMax) {
                         const short = fullVerse.slice(0, tdVerseTextMax - 3) + "...";
@@ -471,22 +560,15 @@
                 }
                 tr.appendChild(tdVerse);
 
-                // const tdTarget = document.createElement("td");
-                // tdTarget.textContent = row.target_kind;
-                // tr.appendChild(tdTarget);
-
-                // Delete column (only create if admin is logged in)
-                const adminToken = localStorage.getItem("adminToken");
-                if (adminToken) {
+                // Delete column (only if admin)
+                if (isAdmin) {
                     const tdDel = document.createElement("td");
                     const btn = document.createElement("button");
                     btn.textContent = "🗑";
                     btn.addEventListener("click", async () => {
                         if (!confirm("Delete this link?")) return;
-                        const tokenToSend = localStorage.getItem("adminToken") || "";
                         const res = await fetch(`/api/links/${row.id}`, {
                             method: "DELETE",
-                            headers: { "x-admin-token": tokenToSend },
                         });
                         if (!res.ok) {
                             const d = await res.json().catch(() => ({}));
@@ -501,6 +583,15 @@
 
                 tbody.appendChild(tr);
             });
+
+            // Update delete header visibility
+            const deleteHeader = document.getElementById("delete-header");
+            if (deleteHeader) deleteHeader.style.display = isAdmin ? "" : "none";
+
+            const loader = document.getElementById("links-loading");
+            if (loader) loader.style.display = "none";
+            const info = document.getElementById("links-info");
+            if (info && rows.length === 0) info.textContent = "No songs found.";
         }
 
 
@@ -547,73 +638,87 @@
             if (e.key === "Escape") closeVerseModal();
         });
 
-        // admin token UI (keeps token only in browser localStorage)
-        function updateAdminUI() {
-            const token = localStorage.getItem("adminToken");
-            document.getElementById("btn-admin-set").style.display = token ? "none" : "";
-            document.getElementById("btn-admin-clear").style.display = token ? "" : "none";
-            document.getElementById("btn-stats").style.display = token ? "" : "none";
+        // REMOVE OLD ADMIN UI FUNCTIONS - DELETE updateAdminUI() and old btn-admin-set/clear handlers
 
-            // show/hide delete column header
-            const deleteHeader = document.getElementById("delete-header");
-            deleteHeader.style.display = token ? "" : "none";
+        // NEW SESSION-BASED ADMIN FUNCTIONS
+        async function adminLogin(token) {
+            try {
+                const r = await fetch("/api/admin/login", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ token })
+                });
+                const data = await r.json();
+                return r.ok;
+            } catch (err) {
+                console.error("Login error:", err);
+                return false;
+            }
         }
 
-        document.getElementById("btn-admin-set").addEventListener("click", async () => {
-            const v = prompt("Paste admin token (kept locally only)");
-            if (!v) return;
-            const candidate = v.trim();
+        async function adminVerify() {
             try {
-                const res = await fetch(`/api/admin/verify`, {
-                    method: "GET",
-                    headers: { "x-admin-token": candidate },
-                });
-                if (!res.ok) {
-                    const body = await res.json().catch(() => ({}));
-                    alert("Invalid admin token: " + (body.error || res.status));
-                    return;
-                }
-                localStorage.setItem("adminToken", candidate);
-                updateAdminUI();
-                await loadLinksForCurrentSelection(); // re-render table to show delete buttons
-                alert("Admin token accepted. Delete buttons are now visible.");
+                const r = await fetch("/api/admin/verify");
+                const data = await r.json();
+                return r.ok;
             } catch (err) {
-                alert("Verification failed. Check server and try again.");
-                console.error(err);
+                console.error("Verify error:", err);
+                return false;
+            }
+        }
+
+        async function adminLogout() {
+            try {
+                await fetch("/api/admin/logout", { method: "POST" });
+            } catch (err) {
+                console.error("Logout error:", err);
+            }
+        }
+
+        async function refreshAdminState() {
+            const isAdmin = await adminVerify();
+            const el = document.getElementById("admin-status");
+            if (el) el.textContent = isAdmin ? "✅ Admin session active" : "";
+
+            document.getElementById("btn-admin-login").style.display = isAdmin ? "none" : "";
+            document.getElementById("btn-admin-logout").style.display = isAdmin ? "" : "none";
+            document.getElementById("btn-stats").style.display = isAdmin ? "" : "none";
+        }
+
+        document.getElementById("btn-admin-login")?.addEventListener("click", async () => {
+            const token = document.getElementById("admin-token-input").value.trim();
+            if (!token) return;
+            const ok = await adminLogin(token);
+            if (!ok) {
+                alert("Admin login failed");
+            } else {
+                alert("Login successful!");
+                document.getElementById("admin-token-input").value = "";
+                await refreshAdminState();
+                await loadLinksForCurrentSelection();
             }
         });
 
-        document.getElementById("btn-admin-clear").addEventListener("click", async () => {
-            localStorage.removeItem("adminToken");
-            updateAdminUI();
-            await loadLinksForCurrentSelection(); // re-render table to hide delete buttons
+        document.getElementById("btn-admin-logout")?.addEventListener("click", async () => {
+            await adminLogout();
+            await refreshAdminState();
+            await loadLinksForCurrentSelection(); // Re-render without delete buttons
         });
 
         // stats button handler
-        document.getElementById("btn-stats").addEventListener("click", async () => {
-            const token = localStorage.getItem("adminToken");
-            if (!token) {
-                alert("Admin token required");
-                return;
-            }
-
+        document.getElementById("btn-stats")?.addEventListener("click", async () => {
             try {
-                const res = await fetch("/api/stats", {
-                    headers: { "x-admin-token": token }
-                });
-
+                const res = await fetch("/api/stats");
                 if (!res.ok) {
                     const body = await res.json().catch(() => ({}));
                     alert("Failed to load stats: " + (body.error || res.status));
                     return;
                 }
-
                 const stats = await res.json();
                 const message = `📊 Website Visit Statistics\n\n` +
                     `Total page visits: ${stats.total}\n` +
                     `Unique visitors (different IPs): ${stats.unique}\n` +
                     `Visits in last 24 hours: ${stats.today}`;
-
                 alert(message);
             } catch (err) {
                 alert("Failed to load stats: " + err.message);
@@ -621,7 +726,13 @@
             }
         });
 
-        updateAdminUI();
+        refreshAdminState();
+
+        // Set info box contact line
+        const infoEl = document.getElementById("links-info");
+        if (infoEl) {
+            infoEl.innerHTML = 'Questions or feedback? Contact <a href="mailto:jaron.111@hotmail.com">jaron.111@hotmail.com</a>';
+        }
 
         // initial load
         loadParshiot();
@@ -658,6 +769,74 @@
             if (e.key === "Escape") {
                 closeHelpModal();
                 closeVerseModal(); // existing verse modal handler
+            }
+        });
+
+        // keep only one of these helpers
+        let flashTimer = null;
+        function showFlash(msg) {
+            const el = document.getElementById("flash");
+            if (!el) return;
+            el.textContent = msg;
+            el.style.display = "block";
+            clearTimeout(flashTimer);
+            flashTimer = setTimeout(() => {
+                el.style.display = "none";
+            }, 8000);
+        }
+
+        document.getElementById("btn-save").addEventListener("click", async () => {
+            const title = document.getElementById("song-title").value.trim();
+            const link = document.getElementById("song-link").value.trim();
+            const verse = document.getElementById("verse-ref").value.trim();
+
+            if (!title || !selectedParashaId) {
+                alert("Need song name + parasha");
+                return;
+            }
+            if (verse.length > 60) {
+                alert("Too much text, please just add the Chapter and Verse number");
+                return;
+            }
+
+            let external_url = null;
+            if (link) {
+                if (!/^https?:\/\//i.test(link)) {
+                    alert("URL must start with http:// or https://");
+                    return;
+                }
+                try { new URL(link); external_url = link; } catch {
+                    alert("Invalid URL format.");
+                    return;
+                }
+            }
+
+            const payload = {
+                parasha_id: selectedParashaId,
+                target_kind: selectedKind,
+                song: { title, external_url },
+                verse_ref: verse || null,
+                ...(selectedKind === "haftarah" ? { target_id: selectedHaftarahId } : {})
+            };
+
+            try {
+                const res = await fetch("/api/links", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data?.error || res.statusText);
+
+                await loadLinksForCurrentSelection();
+
+                document.getElementById("song-title").value = "";
+                document.getElementById("song-link").value = "";
+                document.getElementById("verse-ref").value = "";
+
+                showFlash("Thank You for adding this song! You are amazing.");
+            } catch (err) {
+                alert("Save failed: " + err.message);
             }
         });
     </script>
