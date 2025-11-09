@@ -2,28 +2,39 @@ body {
     max-width: 800px;
     margin: 0 auto;
     padding: 20px;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: var(--font-serif);
     line-height: 1.5;
+    background: var(--bg);
+    color: var(--text);
 }
 
 section {
-    background: #f5f5f5;
+    background: var(--surface);
     padding: 20px;
     border-radius: 8px;
     margin-bottom: 20px;
-    /* remove any heavy visual depth */
     box-shadow: none !important;
+    border: 1px solid var(--border);
 }
 
 h1, h2 {
-    color: #2c3e50;
+    color: var(--text);
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: 0.2px;
 }
 
 input, select, button {
     padding: 8px;
     margin: 5px;
-    border: 1px solid #ddd;
+    border: 1px solid var(--border);
     border-radius: 4px;
+}
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent-400);
+  outline-offset: 2px;
 }
 
 /* make form controls responsive so they don't force horizontal overflow */
@@ -33,15 +44,19 @@ input, select, button, textarea {
 }
 
 button {
-    background: #3498db;
-    color: white;
+    background: var(--accent-600);
+    color: #fff;
     border: none;
     cursor: pointer;
     transition: background 0.2s;
 }
 
 button:hover {
-    background: #2980b9;
+    background: var(--accent-700);
+}
+button:focus-visible {
+    outline: 2px solid var(--accent-400);
+    outline-offset: 2px;
 }
 
 table {
@@ -55,14 +70,14 @@ table {
     width: 100%;
     table-layout: fixed;
     border-collapse: collapse;
-    border: 1px solid #ddd;
+    border: 1px solid var(--border);
     word-break: break-word;
 }
 
 /* Consistent borders for ALL cells */
 #links-table th,
 #links-table td {
-    border: 1px solid #ddd;
+    border: 1px solid var(--border);
     padding: 8px;
     text-align: left;
     vertical-align: top;
@@ -74,10 +89,9 @@ table {
 
 /* Header styling */
 #links-table th {
-    background: #f8f9fa;
+    background: var(--surface-2);
     font-weight: bold;
 }
-
 
 /* Link styling within table cells */
 #links-table td a {
@@ -86,7 +100,7 @@ table {
     word-break: break-word;
     overflow-wrap: anywhere;
     text-decoration: underline;
-    color: #0066cc;
+    color: var(--accent-700);
 }
 
 /* Verse column styling */
@@ -99,14 +113,33 @@ table {
 
 .clickable-verse {
     cursor: pointer;
-    color: #0066cc;
+    color: var(--accent-700);
     text-decoration: underline;
 }
 
 /* header sizing + fixed behavior on wide screens */
 :root {
-  --site-header-height: 92px;   /* increased header height */
-  --logo-size: 80px;            /* larger logo */
+  --site-header-height: 92px;
+  --logo-size: 80px;
+
+  /* Palette */
+  --bg: #FFF8F1;
+  --surface: #F7EFE7;
+  --surface-2: #F1E6DA;
+  --text: #2A1E1A;
+  --muted: #6E5A50;
+
+  --accent-700: #B35C1E;
+  --accent-600: #C76A28;
+  --accent-500: #D77B3A;
+  --accent-400: #E89B5C;
+  --accent-300: #F1B784;
+  --accent-100: #FBE7D3;
+
+  --border: #E6D7C7;
+  /* Fonts */
+  --font-serif: 'Gentium Plus', Georgia, 'Times New Roman', serif;
+  --font-display: 'Fraunces', 'Gentium Plus', Georgia, serif;
 }
 
 /* keep header normal by default (mobile/small screens) */
@@ -127,12 +160,13 @@ table {
   font-size: 1.75rem; /* increased size */
   line-height: 1.05;
   letter-spacing: -0.4px;
+  font-family: var(--font-display);
 }
 
 /* keep title readable on small screens */
 @media (max-width: 420px) {
   .site-title .main-title {
-    font-size: 1.5rem;
+    font-size: 1rem;
   }
 }
 
@@ -154,8 +188,8 @@ table {
     /* Make header flat: remove shadow, use very light border instead */
     box-shadow: none !important;
     /* keep subtle separation from page content */
-    border: 1px solid rgba(0,0,0,0.04);
-    background: rgba(255,255,255,0.98);
+    border: 1px solid var(--border);
+    background: rgba(255, 248, 241, 0.98); /* var(--bg) mit leichter Transparenz */
     border-radius: 8px;
     padding: 14px 24px;
     height: var(--site-header-height);
@@ -239,7 +273,7 @@ table {
 }
 .clickable-verse {
   cursor: pointer;
-  color: #0066cc;
+  color: var(--accent-700);
   text-decoration: underline;
 }
 
@@ -273,7 +307,7 @@ table {
   top: 8px;
   right: 10px;
   border: none;
-  background: transparent;
+  background: rgba(255, 0, 0, 0.194);
   font-size: 1.25rem;
   cursor: pointer;
 }
@@ -306,7 +340,7 @@ html, body {
 
 .songs-count {
     font-size: 0.9rem;
-    color: #666;
+    color: var(--muted);
     margin-top: 4px;
 }
 
@@ -333,7 +367,7 @@ html, body {
     word-break: break-word;
     overflow-wrap: anywhere;
     text-decoration: underline;
-    color: #0066cc;
+    color: var(--accent-700);
 }
 
 /* Mobile responsive adjustments */
@@ -349,7 +383,7 @@ html, body {
 /* bump up the mobile title size (placed at end so it overrides earlier rules) */
 @media (max-width: 420px) {
   .site-title .main-title {
-    font-size: 1.5rem !important;
+    font-size: 1.4rem !important;
   }
 }
 
@@ -361,7 +395,7 @@ html, body {
     width: 50px;
     height: 50px;
     border-radius: 50%;
-    background: #0066cc;
+    background: var(--accent-600);
     color: white;
     border: none;
     font-size: 1.5rem;
@@ -373,7 +407,7 @@ html, body {
 }
 
 .help-button:hover {
-    background: #0052a3;
+    background: var(--accent-700);
     transform: scale(1.05);
 }
 
@@ -389,12 +423,14 @@ html, body {
 
 .help-content {
     line-height: 1.6;
-    color: #333;
+    color: var(--text);
+    font-family: var(--font-serif);
 }
 
 .help-content h2 {
     margin-top: 0;
-    color: #0066cc;
+    color: var(--accent-700);
+    font-family: var(--font-display);
 }
 
 .help-content p {
@@ -411,48 +447,27 @@ html, body {
 }
 
 .help-content strong {
-    color: #0066cc;
-}
-
-/* help modal header with verse */
-.help-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 1rem;
-    gap: 20px;
-}
-
-.help-header h2 {
-    margin: 0;
-    flex: 1;
-}
-
-.help-verse {
-    text-align: right;
-    flex-shrink: 0;
-    max-width: 200px;
+    color: var(--accent-700);
 }
 
 .verse-hebrew {
-    font-size: 0.9rem;
-    font-weight: bold;
-    color: #0066cc;
-    margin-bottom: 4px;
-    direction: rtl;
+  font-size: 0.9rem;
+  font-weight: bold;
+  color: var(--accent-700);
+  margin-bottom: 4px;
+  direction: rtl;
 }
-
 .verse-english {
-    font-size: 0.8rem;
-    font-style: italic;
-    color: #666;
-    margin-bottom: 2px;
+  font-size: 0.8rem;
+  font-style: italic;
+  color: var(--muted);
+  margin-bottom: 2px;
 }
-
 .verse-source {
-    font-size: 0.75rem;
-    color: #999;
-    font-weight: normal;
+  font-size: 0.75rem;
+  color: #8f7f73;
+  font-weight: normal;
+  font-family: 'Gentium Plus', Georgia, serif;
 }
 
 /* responsive: stack on smaller screens */
@@ -471,14 +486,25 @@ html, body {
 /* make logo bigger on mobile */
 @media (max-width: 768px) {
   .site-logo {
-    width: 70px;
-    height: 70px;
+    width: 65px;
+    height: 65px;
   }
 }
 
 @media (max-width: 480px) {
   .site-logo {
-    width:70px;
-    height: 70px;
+    width:65px;
+    height: 65px;
+  }
+}
+
+/* Current parasha section spacing */
+.current-parasha-section {
+  margin-top: 3.5rem;
+}
+
+@media (max-width: 450px) {
+  .current-parasha-section {
+    margin-top: 1rem;
   }
 }
