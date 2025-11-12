@@ -1,6 +1,7 @@
 // Canonical Tanach chapter counts (from Sefaria Index API: schema.lengths[0])
 export default [
-  
+
+  { id: "psalms", title_en: "Psalms", title_he: "תהילים", chapters: 150 },
   // Nevi'im
   { id: "joshua", title_en: "Joshua", title_he: "יהושע", chapters: 24 },
   { id: "judges", title_en: "Judges", title_he: "שופטים", chapters: 21 },
@@ -25,7 +26,6 @@ export default [
   { id: "malachi", title_en: "Malachi", title_he: "מלאכי", chapters: 3 },
 
   // Ketuvim
-  { id: "psalms", title_en: "Psalms", title_he: "תהילים", chapters: 150 },
   { id: "proverbs", title_en: "Proverbs", title_he: "משלי", chapters: 31 },
   { id: "job", title_en: "Job", title_he: "איוב", chapters: 42 },
   { id: "song-of-songs", title_en: "Song of Songs", title_he: "שיר השירים", chapters: 8 },
