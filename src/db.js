@@ -105,6 +105,23 @@ async function findSongByTitleVersion(title, version) {
   }
 }
 
+// find song by (title, external_url)
+async function findSongByTitleUrl(title, external_url) {
+  if (usePg) {
+    const { rows } = await pgPool.query(
+      `SELECT * FROM songs WHERE title = $1 AND COALESCE(external_url,'') = COALESCE($2,'') LIMIT 1`,
+      [title, external_url || null]
+    );
+    return rows[0] || null;
+  } else {
+    return sqliteDb
+      .prepare(
+        "SELECT * FROM songs WHERE title = ? AND ifnull(external_url,'') = ifnull(?, '') LIMIT 1"
+      )
+      .get(title, external_url || null);
+  }
+}
+
 // insert song
 async function insertSong(id, title, version, external_url) {
   if (usePg) {
@@ -118,6 +135,20 @@ async function insertSong(id, title, version, external_url) {
         "INSERT INTO songs (id, title, version, external_url) VALUES (?, ?, ?, ?)"
       )
       .run(id, title, version || null, external_url || null);
+  }
+}
+
+// update song external_url (when we re-link an existing title/version with a new URL)
+async function updateSongExternalUrl(id, external_url) {
+  if (usePg) {
+    await pgPool.query(
+      `UPDATE songs SET external_url = $2 WHERE id = $1`,
+      [id, external_url || null]
+    );
+  } else {
+    sqliteDb
+      .prepare(`UPDATE songs SET external_url = ? WHERE id = ?`)
+      .run(external_url || null, id);
   }
 }
 
@@ -210,6 +241,51 @@ async function getLinksByParasha(parasha_id, target_kind = null) {
     }
     sql += " ORDER BY l.added_at DESC";
     return sqliteDb.prepare(sql).all(...params);
+  }
+}
+
+// NEW: get all links for a Tanach book chapter
+async function getLinksByTanach(book_id, chapter) {
+  const targetKey = `${book_id}:${chapter}`;
+  if (usePg) {
+    const { rows } = await pgPool.query(
+      `
+      SELECT l.id,
+             l.parasha_id,
+             l.target_kind,
+             l.target_id,
+             l.verse_ref,
+             l.added_at,
+             s.title AS song_title,
+             s.external_url AS song_url
+      FROM links l
+      JOIN songs s ON l.song_id = s.id
+      WHERE l.target_kind = 'tanach'
+        AND l.target_id = $1
+      ORDER BY l.added_at DESC
+      `,
+      [targetKey]
+    );
+    return rows;
+  } else {
+    const stmt = sqliteDb.prepare(
+      `
+      SELECT l.id,
+             l.parasha_id,
+             l.target_kind,
+             l.target_id,
+             l.verse_ref,
+             l.added_at,
+             s.title AS song_title,
+             s.external_url AS song_url
+      FROM links l
+      JOIN songs s ON l.song_id = s.id
+      WHERE l.target_kind = 'tanach'
+        AND l.target_id = ?
+      ORDER BY l.added_at DESC
+      `
+    );
+    return stmt.all(targetKey);
   }
 }
 
@@ -308,9 +384,12 @@ export async function getVisitStats() {
 export {
   usePg,
   findSongByTitleVersion,
+  findSongByTitleUrl,
   insertSong,
+  updateSongExternalUrl,
   insertLink,
   getLinksByParasha,
   deleteLink,
   deleteSong,
+  getLinksByTanach, // ensure this is exported
 };

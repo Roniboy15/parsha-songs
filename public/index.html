@@ -129,11 +129,26 @@
         </div>
     </section>
 
+    <!-- NEW: Tanach selector section -->
+    <section>
+        <h2>Or pick any Tanach book</h2>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+            <label for="tanach-book-list">Book:</label>
+            <select id="tanach-book-list" style="min-width:220px;"></select>
+
+            <label for="tanach-chapter-list">Chapter:</label>
+            <select id="tanach-chapter-list" style="min-width:120px;"></select>
+
+            <button id="tanach-go" title="Load songs for this chapter">Load</button>
+        </div>
+        <p id="tanach-load-status" style="color:#666; margin-top:6px;"></p>
+    </section>
+
     <section>
         <h2 id="connect-song-title">Connect a new song</h2>
-        <input id="song-title" placeholder="Song name" />
-        <input id="song-link" placeholder="Link (optional)" />
-        <input id="verse-ref" placeholder="Verse number and chapter (optional)" />
+    <input id="song-title" placeholder="Song name" />
+    <input id="song-link" placeholder="Link (optional)" />
+    <input id="verse-ref" placeholder="Chapter and verse (optional)" />
         <button id="btn-save">Save</button>
 
         <!-- Flash message (success) -->
@@ -212,12 +227,54 @@
     </div>
 
     <script>
+        // --- ADD: simple flash helper so showFlash() exists ---
+        function showFlash(message, type = "success", ms = 3000) {
+            const el = document.getElementById("flash");
+            if (!el) return;
+            el.textContent = message;
+            el.style.display = "block";
+            el.style.background = type === "error" ? "#ffe6e6" : "#e6ffed";
+            el.style.borderColor = type === "error" ? "#cc0000" : "#2ea44f";
+            el.style.color = type === "error" ? "#8a0000" : "#1b6e3b";
+            clearTimeout(el.__t);
+            el.__t = setTimeout(() => (el.style.display = "none"), ms);
+        }
+
         let ALL_PARSHIOT = [];
         let selectedParashaId = null;
         let selectedKind = "parasha";
         let selectedHaftarahId = null;
         let selectedDisplayName = "";
+
+        // NEW: Tanach state
+        let TANACH_BOOKS = [];
+        let selectedBookId = null;     // normalized id
+        let selectedBookTitle = null;  // English title
+        let selectedChapter = null;
+
         let currentLinksAbort = null;
+
+        // set UI mode: "parasha" | "haftarah" | "tanach"
+        function setKind(kind) {
+            selectedKind = kind;
+            // sync radios
+            document.querySelectorAll('input[name="target-kind"]').forEach((r) => {
+                r.checked = r.value === kind;
+            });
+            // toggle haftarah controls
+            const wrap = document.getElementById("haftarah-wrap");
+            if (wrap) wrap.style.display = kind === "haftarah" ? "block" : "none";
+            updateSelectedDisplayName();
+        }
+
+        // Smoothly scroll the viewport to the songs list section
+        function scrollToSongsList() {
+            const anchor = document.getElementById("songs-section-title") || document.getElementById("links-table");
+            if (anchor && typeof anchor.scrollIntoView === "function") {
+                anchor.scrollIntoView({ behavior: "smooth", block: "start" });
+            }
+        }
+
         function beginLinksLoad() {
             const tbody = document.querySelector("#links-table tbody");
             if (tbody) tbody.innerHTML = "";
@@ -261,24 +318,101 @@
             // default selection
             if (parshiot.length) {
                 selectedParashaId = parshiot[0].id;
-                updateSelectedDisplayName(); // Add this call
-                populateHaftarot(selectedParashaId);
-                await loadLinksForCurrentSelection(); // show initial links
-            }
-
-            // when user changes parasha
-            select.addEventListener("change", async (e) => {
-                selectedParashaId = e.target.value;
+                setKind("parasha"); // ensure we start in parasha mode
                 beginLinksLoad();
-                updateSelectedDisplayName(); // Add this call
                 populateHaftarot(selectedParashaId);
                 await loadLinksForCurrentSelection();
+            }
+
+            // when user changes parasha from list: force back to parasha mode
+            select.addEventListener("change", async (e) => {
+                selectedParashaId = e.target.value;
+                setKind("parasha");
+                beginLinksLoad();
+                populateHaftarot(selectedParashaId);
+                await loadLinksForCurrentSelection();
+                scrollToSongsList();
             });
+        }
+
+        // NEW: load tanach books and populate dropdowns
+        async function loadTanachBooks() {
+            const status = document.getElementById("tanach-load-status");
+            try {
+                status.textContent = "Loading Tanach books…";
+                const res = await fetch("/api/tanach/books");
+                if (!res.ok) throw new Error("Failed to load Tanach list");
+                TANACH_BOOKS = await res.json();
+
+                const bookSel = document.getElementById("tanach-book-list");
+                const chapSel = document.getElementById("tanach-chapter-list");
+                bookSel.innerHTML = "";
+                chapSel.innerHTML = "";
+
+                if (!Array.isArray(TANACH_BOOKS) || TANACH_BOOKS.length === 0) {
+                    status.textContent = "No Tanach books available.";
+                    return;
+                }
+
+                TANACH_BOOKS.forEach((b) => {
+                    const opt = document.createElement("option");
+                    opt.value = b.id;
+                    // Show only the book title (no chapter counts in label)
+                    opt.textContent = b.title_en;
+                    bookSel.appendChild(opt);
+                });
+
+                selectedBookId = TANACH_BOOKS[0].id;
+                selectedBookTitle = TANACH_BOOKS[0].title_en;
+                fillChapterSelect(TANACH_BOOKS[0].chapters);
+                status.textContent = "";
+            } catch (err) {
+                console.error(err);
+                status.textContent = "Failed to load Tanach data.";
+            }
+        }
+
+                // removed: no longer auto-fill verse input with chapter (was confusing)
+
+        // helper: apply selection (updates headers + loads list)
+        async function applyTanachSelectionUpdate() {
+          selectedKind = "tanach";
+                    // hide haftarah UI when in tanach mode
+                    const wrap = document.getElementById("haftarah-wrap");
+                    if (wrap) wrap.style.display = "none";
+                    // do not auto-fill verse; ensure field remains as user left it
+          updateSelectedDisplayName();
+          beginLinksLoad();
+                    await loadLinksForCurrentSelection();
+                    scrollToSongsList();
+        }
+
+        function fillChapterSelect(chapters) {
+            const chapSel = document.getElementById("tanach-chapter-list");
+            chapSel.innerHTML = "";
+            for (let i = 1; i <= chapters; i++) {
+                const opt = document.createElement("option");
+                opt.value = String(i);
+                opt.textContent = String(i);
+                chapSel.appendChild(opt);
+            }
+            // set selectedChapter to the first available; do not prefill verse
+            selectedChapter = parseInt(chapSel.value || "1", 10);
         }
 
         // Add this new function
         function updateSelectedDisplayName() {
             const parasha = ALL_PARSHIOT.find((p) => p.id === selectedParashaId);
+            if (selectedKind === "tanach") {
+                const book = TANACH_BOOKS.find((b) => b.id === selectedBookId);
+                const bookName = book?.title_en || selectedBookTitle || "Selected book";
+                selectedDisplayName = selectedChapter
+                    ? `${bookName} ch. ${selectedChapter}`
+                    : `${bookName}`;
+                updateSectionTitle();
+                return;
+            }
+
             if (!parasha) {
                 selectedDisplayName = "this selection";
                 updateSectionTitle();
@@ -298,17 +432,13 @@
             updateSectionTitle();
         }
 
-        // Add this new function
         function updateSectionTitle() {
             const title = document.getElementById("songs-section-title");
             title.textContent = `Songs for ${selectedDisplayName}`;
-
-            // Update the connect song title too
             const connectTitle = document.getElementById("connect-song-title");
             connectTitle.textContent = `Connect a new song to ${selectedDisplayName}`;
         }
 
-        // 2) fill haftarot for a given parasha
         function populateHaftarot(parashaId) {
             const wrap = document.getElementById("haftarah-wrap");
             const sel = document.getElementById("haftarah-list");
@@ -345,6 +475,8 @@
 
         // 3) load current parasha from backend/he bcal
         document.getElementById("btn-current").addEventListener("click", async () => {
+            // ensure we’re in parasha mode when user clicks this
+            setKind("parasha");
             beginLinksLoad();
             const res = await fetch("/api/current-reading");
             const data = await res.json();
@@ -358,125 +490,59 @@
             const currentId = data.parasha.id;
             const currentName = data.parasha.name_en;
 
-            // show it on top
             p.textContent = `This Shabbat: ${currentName}`;
-
-            // update state
             selectedParashaId = currentId;
 
-            // update dropdown if option exists
             const select = document.getElementById("parsha-list");
-            const option = Array.from(select.options).find(
-                (opt) => opt.value === currentId
-            );
-            if (option) {
-                select.value = currentId;
-            }
+            const option = Array.from(select.options).find((opt) => opt.value === currentId);
+            if (option) select.value = currentId;
 
-            // update haftarot & table
-            updateSelectedDisplayName(); // Add this call
+            updateSelectedDisplayName();
             populateHaftarot(selectedParashaId);
             await loadLinksForCurrentSelection();
+            scrollToSongsList();
         });
 
-        // 4) radio buttons (parasha / haftarah)
+        // Radio buttons (parasha / haftarah)
         document
             .querySelectorAll('input[name="target-kind"]')
             .forEach((input) => {
                 input.addEventListener("change", async (e) => {
-                    selectedKind = e.target.value;
+                    // switching the radio away from tanach should show parasha/haftarah data
+                    setKind(e.target.value);
+                    if (!selectedParashaId) {
+                        // pick first parasha if none selected yet
+                        if (ALL_PARSHIOT.length) selectedParashaId = ALL_PARSHIOT[0].id;
+                    }
                     beginLinksLoad();
-                    updateSelectedDisplayName(); // Add this call
                     populateHaftarot(selectedParashaId);
                     await loadLinksForCurrentSelection();
                 });
             });
 
-        // // 5) save new link
-        // document.getElementById("btn-save").addEventListener("click", async () => {
-        //     const title = document.getElementById("song-title").value.trim();
-        //     const link = document.getElementById("song-link").value.trim();
-        //     const verse = document.getElementById("verse-ref").value.trim();
+        // NEW: Tanach selectors behavior (update immediately on change)
+        document.getElementById("tanach-book-list").addEventListener("change", async (e) => {
+            const id = e.target.value;
+            const book = TANACH_BOOKS.find((b) => b.id === id);
+            if (!book) return;
+            selectedBookId = id;
+            selectedBookTitle = book.title_en;
+            fillChapterSelect(book.chapters);
+            await applyTanachSelectionUpdate();
+        });
 
-        //     // Validate inputs
-        //     if (!title || !selectedParashaId) {
-        //         alert("Need song name + parasha");
-        //         return;
-        //     }
+        document.getElementById("tanach-chapter-list").addEventListener("change", async (e) => {
+            selectedChapter = parseInt(e.target.value, 10);
+            await applyTanachSelectionUpdate();
+        });
 
-        //     if (verse.length > 60) {
-        //         alert("Too much text, please just add the Chapter and Verse number");
-        //         return;
-        //     }
+        document.getElementById("tanach-go").addEventListener("click", async () => {
+            if (!selectedBookId || !selectedChapter) return;
+            await applyTanachSelectionUpdate();
+        });
 
-        //     // URL validation
-        //     let external_url = null;
-        //     if (link) {
-        //         if (!link.startsWith('http://') && !link.startsWith('https://')) {
-        //             alert("URL must start with http:// or https://");
-        //             return;
-        //         }
-        //         try {
-        //             new URL(link);
-        //             external_url = link;
-        //         } catch (e) {
-        //             alert("Invalid URL format. Please enter a complete URL (e.g., https://youtube.com/watch?v=...)");
-        //             return;
-        //         }
-        //     }
-
-        //     const payload = {
-        //         parasha_id: selectedParashaId,
-        //         target_kind: selectedKind,
-        //         song: {
-        //             title,
-        //             external_url
-        //         },
-        //         verse_ref: verse || null
-        //     };
-
-        //     if (selectedKind === "haftarah") {
-        //         payload.target_id = selectedHaftarahId;
-        //     }
-
-        //     // REMOVE OLD TOKEN LOGIC - sessions handle auth automatically via cookies
-        //     try {
-        //         const res = await fetch("/api/links", {
-        //             method: "POST",
-        //             headers: {
-        //                 "Content-Type": "application/json"
-        //             },
-        //             body: JSON.stringify(payload)
-        //         });
-
-        //         const data = await res.json();
-
-        //         if (!res.ok) {
-        //             throw new Error(`Error (${res.status}): ${JSON.stringify(data)}`);
-        //         }
-
-        //         await loadLinksForCurrentSelection();
-
-        //         // Clear inputs after successful save
-        //         document.getElementById("song-title").value = "";
-        //         document.getElementById("song-link").value = "";
-        //         document.getElementById("verse-ref").value = "";
-
-        //         // Show success message
-        //         const flash = document.getElementById("flash");
-        //         flash.textContent = "Song saved successfully!";
-        //         flash.style.display = "block";
-        //         setTimeout(() => {
-        //             flash.style.display = "none";
-        //         }, 3000);
-        //     } catch (err) {
-        //         alert("Save failed: " + err.message);
-        //     }
-        // });
-
-        // 6) load links for current parasha/kind
+        // 6) load links for current parasha/kind or tanach
         async function loadLinksForCurrentSelection() {
-            if (!selectedParashaId) return;
             if (currentLinksAbort) currentLinksAbort.abort();
             currentLinksAbort = new AbortController();
             const { signal } = currentLinksAbort;
@@ -485,12 +551,22 @@
             let rows = [];
             let totalData = { total: 0 };
             try {
-                const totalRes = await fetch("/api/total-songs", { signal });
+                const totalRes = await fetch(`/api/total-songs?ts=${Date.now()}` , { signal, cache: "no-store" });
                 totalData = await totalRes.json();
-                const params = new URLSearchParams({ parasha_id: selectedParashaId });
-                params.set("target_kind", selectedKind);
-                const res = await fetch(`/api/links?${params.toString()}`, { signal });
-                rows = await res.json();
+
+                if (selectedKind === "tanach") {
+                    const params = new URLSearchParams({
+                        book_id: selectedBookId,
+                        chapter: String(selectedChapter || 1),
+                    });
+                    const res = await fetch(`/api/links-tanach?${params.toString()}&ts=${Date.now()}` , { signal, cache: "no-store" });
+                    rows = await res.json();
+                } else {
+                    const params = new URLSearchParams({ parasha_id: selectedParashaId });
+                    params.set("target_kind", selectedKind);
+                    const res = await fetch(`/api/links?${params.toString()}&ts=${Date.now()}` , { signal, cache: "no-store" });
+                    rows = await res.json();
+                }
             } catch (err) {
                 const loader = document.getElementById("links-loading");
                 if (loader) loader.style.display = "none";
@@ -505,6 +581,7 @@
 
             const totalSongs = document.getElementById("total-songs");
             totalSongs.textContent = `${totalData.total} songs connected so far`;
+
             const tbody = document.querySelector("#links-table tbody");
             if (!tbody) {
                 const loader = document.getElementById("links-loading");
@@ -529,9 +606,7 @@
                     const a = document.createElement("a");
                     a.href = row.song_url;
                     let displayUrl = row.song_url;
-                    if (displayUrl.length > 40) {
-                        displayUrl = displayUrl.substring(0, 37) + "...";
-                    }
+                    if (displayUrl.length > 40) displayUrl = displayUrl.substring(0, 37) + "...";
                     a.textContent = displayUrl;
                     a.target = "_blank";
                     a.rel = "noopener";
@@ -592,7 +667,7 @@
 
             // Update delete header visibility
             const deleteHeader = document.getElementById("delete-header");
-            if (deleteHeader) deleteHeader.style.display = isAdmin ? "" : "none";
+            if (deleteHeader) deleteHeader.style.display = (await adminVerify()) ? "" : "none";
 
             const loader = document.getElementById("links-loading");
             if (loader) loader.style.display = "none";
@@ -740,23 +815,29 @@
             infoEl.innerHTML = 'Questions or feedback? Contact <a href="mailto:jaron.111@hotmail.com">jaron.111@hotmail.com</a>';
         }
 
-        // initial load
-        loadParshiot();
+                // initial load
+                loadParshiot();
+                loadTanachBooks();
+                // show new feature intro once per browser
+                if (typeof openTanachIntroIfNeeded === "function") {
+                    openTanachIntroIfNeeded();
+                }
+                
 
-        // help modal control
+        // help modal control (KEEP ONLY THIS ONE)
         function openHelpModal() {
-            const modal = document.getElementById("help-modal");
-            modal.style.display = "flex";
-            modal.setAttribute("aria-hidden", "false");
-            document.body.style.overflow = "hidden";
-            document.getElementById("help-modal-close").focus();
+          const modal = document.getElementById("help-modal");
+          modal.style.display = "flex";
+          modal.setAttribute("aria-hidden", "false");
+          document.body.style.overflow = "hidden";
+          document.getElementById("help-modal-close").focus();
         }
 
         function closeHelpModal() {
-            const modal = document.getElementById("help-modal");
-            modal.style.display = "none";
-            modal.setAttribute("aria-hidden", "true");
-            document.body.style.overflow = "";
+          const modal = document.getElementById("help-modal");
+          modal.style.display = "none";
+          modal.setAttribute("aria-hidden", "true");
+          document.body.style.overflow = "";
         }
 
         // help button click handler
@@ -765,43 +846,86 @@
         // help modal close handlers
         document.getElementById("help-modal-close").addEventListener("click", closeHelpModal);
 
-        // close on backdrop click or escape key (reuse existing modal handlers)
+        // close on backdrop click or escape key
         document.addEventListener("click", (e) => {
-            const helpModal = document.getElementById("help-modal");
-            if (e.target === helpModal) closeHelpModal();
+          const helpModal = document.getElementById("help-modal");
+          if (e.target === helpModal) closeHelpModal();
         });
 
         document.addEventListener("keydown", (e) => {
-            if (e.key === "Escape") {
-                closeHelpModal();
-                closeVerseModal(); // existing verse modal handler
-            }
+          if (e.key === "Escape") {
+            closeHelpModal();
+            closeVerseModal();
+          }
         });
 
-        // keep only one of these helpers
-        let flashTimer = null;
-        function showFlash(msg) {
-            const el = document.getElementById("flash");
-            if (!el) return;
-            el.textContent = msg;
-            el.style.display = "block";
-            clearTimeout(flashTimer);
-            flashTimer = setTimeout(() => {
-                el.style.display = "none";
-            }, 8000);
-        }
+                // One-time intro modal for Tanach linking
+                function ensureTanachIntroModal() {
+                        if (document.getElementById("tanach-intro-modal")) return;
+                        const html = `
+                        <div id="tanach-intro-modal" class="modal" aria-hidden="true" style="display:none">
+                            <div class="modal-content" role="dialog" aria-modal="true" aria-label="New feature: Tanach linking">
+                                <button id="tanach-intro-close" class="modal-close" aria-label="Close">×</button>
+                                <h2 style="margin-top:0">New: Link songs to any Tanach chapter</h2>
+                                <p>
+                                    You can now connect songs not only to Parashiot or Haftarot, but also to any chapter across Tanach.
+                                    Use the "Or pick any Tanach book" section to browse or add songs by book & chapter.
+                                </p>
+                                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
+                                    <button id="tanach-intro-try" class="primary">Try it now</button>
+                                    <button id="tanach-intro-gotit">Got it</button>
+                                </div>
+                            </div>
+                        </div>`;
+                        document.body.insertAdjacentHTML("beforeend", html);
+                        const closeBtn = document.getElementById("tanach-intro-close");
+                        const gotIt = document.getElementById("tanach-intro-gotit");
+                        const tryBtn = document.getElementById("tanach-intro-try");
+                        const modal = document.getElementById("tanach-intro-modal");
+                        const closeFn = () => {
+                            modal.style.display = "none";
+                            modal.setAttribute("aria-hidden", "true");
+                            document.body.style.overflow = "";
+                            try { localStorage.setItem("tanachIntroSeen", "1"); } catch {}
+                        };
+                        closeBtn.addEventListener("click", closeFn);
+                        gotIt.addEventListener("click", closeFn);
+                        tryBtn.addEventListener("click", () => {
+                            closeFn();
+                            const el = document.getElementById("tanach-book-list");
+                            if (el) {
+                                el.scrollIntoView({ behavior: "smooth", block: "center" });
+                                setTimeout(() => el.focus(), 350);
+                            }
+                        });
+                }
+
+                function openTanachIntro() {
+                        ensureTanachIntroModal();
+                        const modal = document.getElementById("tanach-intro-modal");
+                        modal.style.display = "flex";
+                        modal.setAttribute("aria-hidden", "false");
+                        document.body.style.overflow = "hidden";
+                        document.getElementById("tanach-intro-close").focus();
+                }
+
+                function openTanachIntroIfNeeded() {
+                        try {
+                                if (!localStorage.getItem("tanachIntroSeen")) {
+                                        openTanachIntro();
+                                }
+                        } catch {
+                                openTanachIntro();
+                        }
+                }
 
         document.getElementById("btn-save").addEventListener("click", async () => {
             const title = document.getElementById("song-title").value.trim();
             const link = document.getElementById("song-link").value.trim();
             const verse = document.getElementById("verse-ref").value.trim();
 
-            if (!title || !selectedParashaId) {
-                alert("Need song name + parasha");
-                return;
-            }
-            if (verse.length > 60) {
-                alert("Too much text, please just add the Chapter and Verse number");
+            if (!title) {
+                alert("Need song name");
                 return;
             }
 
@@ -817,13 +941,33 @@
                 }
             }
 
-            const payload = {
-                parasha_id: selectedParashaId,
-                target_kind: selectedKind,
-                song: { title, external_url },
-                verse_ref: verse || null,
-                ...(selectedKind === "haftarah" ? { target_id: selectedHaftarahId } : {})
-            };
+            let payload;
+            if (selectedKind === "tanach") {
+                if (!selectedBookId || !selectedChapter) {
+                    alert("Please select a book and chapter");
+                    return;
+                }
+                payload = {
+                    parasha_id: selectedBookId, // placeholder to satisfy backend
+                    target_kind: "tanach",
+                    book_id: selectedBookId,
+                    chapter: selectedChapter,
+                    song: { title, external_url },
+                    verse_ref: verse || null,
+                };
+            } else {
+                if (!selectedParashaId) {
+                    alert("Need parasha selection");
+                    return;
+                }
+                payload = {
+                    parasha_id: selectedParashaId,
+                    target_kind: selectedKind,
+                    song: { title, external_url },
+                    verse_ref: verse || null,
+                    ...(selectedKind === "haftarah" ? { target_id: selectedHaftarahId } : {}),
+                };
+            }
 
             try {
                 const res = await fetch("/api/links", {
@@ -838,9 +982,14 @@
 
                 document.getElementById("song-title").value = "";
                 document.getElementById("song-link").value = "";
+                // always clear verse field after save; do not auto-fill
                 document.getElementById("verse-ref").value = "";
 
-                showFlash("Thank You for adding this song! You are amazing.");
+                                if (typeof showFlash === "function") {
+                                        showFlash("Thank you for adding this song. You are amazing!");
+                                } else {
+                                        console.log("Thank you for adding this song!");
+                                }
             } catch (err) {
                 alert("Save failed: " + err.message);
             }

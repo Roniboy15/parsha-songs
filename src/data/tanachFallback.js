@@ -1,0 +1,41 @@
+// Canonical Tanach chapter counts (from Sefaria Index API: schema.lengths[0])
+export default [
+  
+  // Nevi'im
+  { id: "joshua", title_en: "Joshua", title_he: "יהושע", chapters: 24 },
+  { id: "judges", title_en: "Judges", title_he: "שופטים", chapters: 21 },
+  { id: "i-samuel", title_en: "I Samuel", title_he: "שמואל א", chapters: 31 },
+  { id: "ii-samuel", title_en: "II Samuel", title_he: "שמואל ב", chapters: 24 },
+  { id: "i-kings", title_en: "I Kings", title_he: "מלכים א", chapters: 22 },
+  { id: "ii-kings", title_en: "II Kings", title_he: "מלכים ב", chapters: 25 },
+  { id: "isaiah", title_en: "Isaiah", title_he: "ישעיה", chapters: 66 },
+  { id: "jeremiah", title_en: "Jeremiah", title_he: "ירמיה", chapters: 52 },
+  { id: "ezekiel", title_en: "Ezekiel", title_he: "יחזקאל", chapters: 48 },
+  { id: "hosea", title_en: "Hosea", title_he: "הושע", chapters: 14 },
+  { id: "joel", title_en: "Joel", title_he: "יואל", chapters: 4 },
+  { id: "amos", title_en: "Amos", title_he: "עמוס", chapters: 9 },
+  { id: "obadiah", title_en: "Obadiah", title_he: "עובדיה", chapters: 1 },
+  { id: "jonah", title_en: "Jonah", title_he: "יונה", chapters: 4 },
+  { id: "micah", title_en: "Micah", title_he: "מיכה", chapters: 7 },
+  { id: "nahum", title_en: "Nahum", title_he: "נחום", chapters: 3 },
+  { id: "habakkuk", title_en: "Habakkuk", title_he: "חבקוק", chapters: 3 },
+  { id: "zephaniah", title_en: "Zephaniah", title_he: "צפניה", chapters: 3 },
+  { id: "haggai", title_en: "Haggai", title_he: "חגי", chapters: 2 },
+  { id: "zechariah", title_en: "Zechariah", title_he: "זכריה", chapters: 14 },
+  { id: "malachi", title_en: "Malachi", title_he: "מלאכי", chapters: 3 },
+
+  // Ketuvim
+  { id: "psalms", title_en: "Psalms", title_he: "תהילים", chapters: 150 },
+  { id: "proverbs", title_en: "Proverbs", title_he: "משלי", chapters: 31 },
+  { id: "job", title_en: "Job", title_he: "איוב", chapters: 42 },
+  { id: "song-of-songs", title_en: "Song of Songs", title_he: "שיר השירים", chapters: 8 },
+  { id: "ruth", title_en: "Ruth", title_he: "רות", chapters: 4 },
+  { id: "lamentations", title_en: "Lamentations", title_he: "איכה", chapters: 5 },
+  { id: "ecclesiastes", title_en: "Ecclesiastes", title_he: "קהלת", chapters: 12 },
+  { id: "esther", title_en: "Esther", title_he: "אסתר", chapters: 10 },
+  { id: "daniel", title_en: "Daniel", title_he: "דניאל", chapters: 12 },
+  { id: "ezra", title_en: "Ezra", title_he: "עזרא", chapters: 10 },
+  { id: "nehemiah", title_en: "Nehemiah", title_he: "נחמיה", chapters: 13 },
+  { id: "i-chronicles", title_en: "I Chronicles", title_he: "דברי הימים א", chapters: 29 },
+  { id: "ii-chronicles", title_en: "II Chronicles", title_he: "דברי הימים ב", chapters: 36 },
+];

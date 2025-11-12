@@ -9,11 +9,13 @@ import * as dbModule from "./db.js";
 import nodemailer from "nodemailer";
 import { generalLimiter, writeLimiter, sensitiveLimiter, adminLimiter } from "./middlewares/rateLimit.js";
 import { validateBody, validateQuery } from "./middlewares/validate.js";
-import { linkCreateSchema, linksListQuerySchema, currentReadingQuerySchema } from "./validation/schemas.js";
+import { linkCreateSchema, linksListQuerySchema, currentReadingQuerySchema, tanachLinksQuerySchema } from "./validation/schemas.js";
 import { buildSessionMiddleware } from "./auth/session.js";
 import { requireAdmin, attachAdminFlag } from "./middlewares/adminAuth.js";
+// add import
+import TANACH_FALLBACK from "./data/tanachFallback.js";
 const {
-  findSongByTitleVersion,
+  findSongByTitleUrl,
   insertSong,
   insertLink,
   getLinksByParasha,
@@ -72,6 +74,45 @@ async function loadParshiot() {
   return JSON.parse(txt).parshiot;
 }
 
+// add safe fetch polyfill (Node < 18)
+const fetch = globalThis.fetch ?? (await import("node-fetch")).default;
+
+// NEW: Sefaria Tanach books cache and helpers
+let tanachCache = { data: null, fetchedAt: 0 };
+const TANACH_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+function normalizeId(title) {
+  return title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+async function getBookChapterCount(englishTitle) {
+  const idxUrl = `https://www.sefaria.org/api/index/${encodeURIComponent(englishTitle)}`;
+  const r = await fetch(idxUrl, { headers: { "Accept": "application/json" } });
+  if (!r.ok) throw new Error(`Index fetch failed for ${englishTitle}: ${r.status}`);
+  const data = await r.json();
+
+  // Prefer schema.lengths[0]; fallbacks for odd schemas
+  let chapters = null;
+  const lengths = data?.schema?.lengths || data?.lengths || null;
+  if (Array.isArray(lengths) && lengths.length) chapters = lengths[0];
+
+  if (!chapters && Array.isArray(data?.schema?.nodes)) {
+    // Some books store lengths on first node
+    const nodeLengths = data.schema.nodes[0]?.lengths;
+    if (Array.isArray(nodeLengths) && nodeLengths.length) chapters = nodeLengths[0];
+  }
+
+  if (!chapters || typeof chapters !== "number") {
+    throw new Error(`No chapter count for ${englishTitle}`);
+  }
+  return chapters;
+}
+
+// REMOVE remote Sefaria calls; always serve the static fallback.
+async function fetchTanachBooks() {
+  return TANACH_FALLBACK;
+}
+
 // 1) GET /api/parshiot
 app.get("/api/parshiot", async (req, res) => {
   const parshiot = await loadParshiot();
@@ -80,6 +121,29 @@ app.get("/api/parshiot", async (req, res) => {
 
 // apply a general limiter to read-only API routes
 app.use("/api", generalLimiter);
+
+// NEW: GET /api/tanach/books -> list books with chapter counts
+app.get("/api/tanach/books", async (req, res) => {
+  try {
+    const books = await fetchTanachBooks();
+    res.json(books);
+  } catch (err) {
+    console.error("tanach/books failed:", err);
+    res.status(500).json({ error: "tanach-load-failed" });
+  }
+});
+
+// NEW: GET /api/links-tanach?book_id=&chapter=
+app.get("/api/links-tanach", validateQuery(tanachLinksQuerySchema), async (req, res) => {
+  try {
+    const { book_id, chapter } = res.locals.validatedQuery;
+    const rows = await dbModule.getLinksByTanach(book_id, chapter);
+    res.json(rows);
+  } catch (err) {
+    console.error("links-tanach failed:", err);
+    res.status(500).json({ ok: false, error: "tanach-links-failed" });
+  }
+});
 
 // 2) GET /api/current-reading  --> find the next shabbat parasha in the coming 7 days
 app.get("/api/current-reading", validateQuery(currentReadingQuerySchema), async (req, res) => {
@@ -152,25 +216,26 @@ app.get("/api/current-reading", validateQuery(currentReadingQuerySchema), async 
 
 // 3) POST /api/links
 app.post("/api/links", writeLimiter, validateBody(linkCreateSchema), async (req, res) => {
-  const { parasha_id, target_kind, target_id, song, verse_ref, added_by } = req.body;
+  const { parasha_id, target_kind, target_id, song, verse_ref, added_by, book_id, chapter } = req.body;
 
   if (!parasha_id || !target_kind || !song?.title) {
     return res.status(400).json({ error: "missing-fields" });
   }
 
-  const parshiot = await loadParshiot();
-  const parasha = parshiot.find((p) => p.id === parasha_id);
-  if (!parasha) {
-    return res.status(400).json({ error: "unknown-parasha" });
-  }
+  // For parasha/haftarah we still validate parasha exists; skip for tanach
+  if (target_kind !== "tanach") {
+    const parshiot = await loadParshiot();
+    const parasha = parshiot.find((p) => p.id === parasha_id);
+    if (!parasha) {
+      return res.status(400).json({ error: "unknown-parasha" });
+    }
 
-  if (target_kind === "haftarah") {
-    const haftarot = parasha.haftarot?.diaspora || [];
-    const ok = haftarot.some((h) => h.id === target_id);
-    if (!ok) {
-      return res
-        .status(400)
-        .json({ error: "haftarah-not-under-this-parasha" });
+    if (target_kind === "haftarah") {
+      const haftarot = parasha.haftarot?.diaspora || [];
+      const ok = haftarot.some((h) => h.id === target_id);
+      if (!ok) {
+        return res.status(400).json({ error: "haftarah-not-under-this-parasha" });
+      }
     }
   }
 
@@ -179,42 +244,55 @@ app.post("/api/links", writeLimiter, validateBody(linkCreateSchema), async (req,
   const cleanUrl = song.external_url || null;
 
   // find or create song
-  let existing = await findSongByTitleVersion(
-    cleanTitle,
-    song.version || null
-  );
+  // Deduplicate by (title, external_url) so same title with different links are separate songs
+  let existing = await findSongByTitleUrl(cleanTitle, cleanUrl || null);
   let songId;
   if (existing) {
     songId = existing.id;
   } else {
     songId = crypto.randomUUID();
-    await insertSong(songId, cleanTitle, song.version || null, cleanUrl || null);
+    // version is not used anymore; store null
+    await insertSong(songId, cleanTitle, null, cleanUrl || null);
+  }
+
+  // Compute target fields
+  let finalTargetKind = target_kind;
+  let finalTargetId = null;
+  let finalParashaId = parasha_id;
+
+  if (target_kind === "tanach") {
+    // Use normalized book_id as parasha_id placeholder to satisfy schema/DB not null
+    finalParashaId = book_id;
+    finalTargetId = `${book_id}:${chapter}`;
+  } else if (target_kind === "haftarah") {
+    finalTargetId = target_id || null;
   }
 
   const newId = await insertLink({
-    parasha_id,
-    target_kind,
-    target_id: target_kind === "haftarah" ? target_id : null,
+    parasha_id: finalParashaId,
+    target_kind: finalTargetKind,
+    target_id: finalTargetId,
     song_id: songId,
     verse_ref: verse_ref || null,
     added_by: added_by || null,
   });
 
-  // REPLACE THIS SECTION:
   // only notify if NOT admin session
   const isAdmin = !!req.session?.isAdmin;
   if (!isAdmin) {
     notifyNewLink({
-      parasha_id,
-      target_kind,
-      target_id,
-      title: cleanTitle,
-      external_url: cleanUrl,
+      link_id: newId,
+      parasha_id: finalParashaId,
+      target_kind: finalTargetKind,
+      target_id: finalTargetId,
+      song_title: cleanTitle,
+      song_url: cleanUrl,
       verse_ref: verse_ref || null,
       added_by: added_by || null,
+      timestamp: new Date().toISOString(),
     }).catch(() => {});
   }
-  
+
   res.json({ ok: true, link_id: newId });
 });
 
