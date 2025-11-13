@@ -21,6 +21,10 @@ const {
   getLinksByParasha,
   deleteLink,
   deleteSong,
+  approveLinkByToken,
+  approveLinkById,
+  rejectLinkById,
+  getPendingLinks,
 } = dbModule;
 // try to find the DB object on common export names
 const db = dbModule.default || dbModule.db || dbModule;
@@ -72,6 +76,34 @@ async function loadParshiot() {
     "utf8"
   );
   return JSON.parse(txt).parshiot;
+}
+
+function getBaseUrl(req) {
+  const envUrl = process.env.APPROVAL_BASE_URL || process.env.PUBLIC_BASE_URL || process.env.APP_BASE_URL;
+  if (envUrl) return envUrl.replace(/\/$/, "");
+  const forwardedHost = req.get("x-forwarded-host");
+  const host = forwardedHost || req.get("host") || "localhost";
+  const proto = req.get("x-forwarded-proto") || req.protocol || "https";
+  return `${proto}://${host}`.replace(/\/$/, "");
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (ch) => {
+    switch (ch) {
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case '"':
+        return "&quot;";
+      case "'":
+        return "&#39;";
+      default:
+        return ch;
+    }
+  });
 }
 
 // add safe fetch polyfill (Node < 18)
@@ -268,6 +300,10 @@ app.post("/api/links", writeLimiter, validateBody(linkCreateSchema), async (req,
     finalTargetId = target_id || null;
   }
 
+  const isAdmin = !!req.session?.isAdmin;
+  const approvalToken = isAdmin ? null : crypto.randomBytes(24).toString("hex");
+  const approvedAt = isAdmin ? new Date().toISOString() : null;
+
   const newId = await insertLink({
     parasha_id: finalParashaId,
     target_kind: finalTargetKind,
@@ -275,11 +311,15 @@ app.post("/api/links", writeLimiter, validateBody(linkCreateSchema), async (req,
     song_id: songId,
     verse_ref: verse_ref || null,
     added_by: added_by || null,
+    status: isAdmin ? "approved" : "pending",
+    approval_token: approvalToken,
+    approved_at: approvedAt,
   });
 
   // only notify if NOT admin session
-  const isAdmin = !!req.session?.isAdmin;
   if (!isAdmin) {
+    const baseUrl = getBaseUrl(req);
+    const approvalUrl = approvalToken ? `${baseUrl}/api/links/approve/${approvalToken}` : null;
     notifyNewLink({
       link_id: newId,
       parasha_id: finalParashaId,
@@ -290,10 +330,11 @@ app.post("/api/links", writeLimiter, validateBody(linkCreateSchema), async (req,
       verse_ref: verse_ref || null,
       added_by: added_by || null,
       timestamp: new Date().toISOString(),
+      approval_url: approvalUrl,
     }).catch(() => {});
   }
 
-  res.json({ ok: true, link_id: newId });
+  res.json({ ok: true, link_id: newId, status: isAdmin ? "approved" : "pending" });
 });
 
 // create mail transporter if SMTP env provided
@@ -324,94 +365,92 @@ async function notifyNewLink(payload) {
   const webhook = process.env.NOTIFY_WEBHOOK;
   const notifyEmail = process.env.NOTIFY_EMAIL;
   const brevoApiKey = process.env.BREVO_API_KEY; // add this env var
+  let delivered = false;
+
+  const buildLines = () =>
+    [
+      `Parasha: ${payload.parasha_id}`,
+      `Target: ${payload.target_kind}${payload.target_id ? " / " + payload.target_id : ""}`,
+      `Title: ${payload.song_title || ""}`,
+      `URL: ${payload.song_url || ""}`,
+      `Verse: ${payload.verse_ref || ""}`,
+      `Added by: ${payload.added_by || ""}`,
+      `ID: ${payload.link_id}`,
+      `Time: ${payload.timestamp}`,
+      payload.approval_url ? `Approve: ${payload.approval_url}` : null,
+    ].filter(Boolean);
 
   // 1) webhook if configured
-  if (webhook) {
+  if (webhook && !brevoApiKey && !mailTransporter) {
     try {
       await fetch(webhook, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      return;
+      delivered = true;
     } catch (err) {
       console.error("webhook notify failed:", err?.message || err);
     }
   }
 
   // 2) Brevo API (no SMTP port needed)
-  if (brevoApiKey && notifyEmail) {
+  if (!delivered && brevoApiKey && notifyEmail) {
     try {
       const subject = `New song added: ${payload.song_title || "(no title)"}`;
-      const textLines = [
-        `Parasha: ${payload.parasha_id}`,
-        `Target: ${payload.target_kind}${payload.target_id ? " / " + payload.target_id : ""}`,
-        `Title: ${payload.song_title || ""}`,
-        `URL: ${payload.song_url || ""}`,
-        `Verse: ${payload.verse_ref || ""}`,
-        `Added by: ${payload.added_by || ""}`,
-        `ID: ${payload.link_id}`,
-        `Time: ${payload.timestamp}`,
-      ];
-      
+      const textLines = buildLines();
+
       const response = await fetch("https://api.brevo.com/v3/smtp/email", {
         method: "POST",
         headers: {
-          "accept": "application/json",
+          accept: "application/json",
           "api-key": brevoApiKey,
-          "content-type": "application/json"
+          "content-type": "application/json",
         },
         body: JSON.stringify({
-          sender: { 
+          sender: {
             email: process.env.NOTIFY_FROM || "noreply@example.com",
-            name: "Parsha Songs"
+            name: "Parsha Songs",
           },
           to: [{ email: notifyEmail }],
-          subject: subject,
+          subject,
           textContent: textLines.join("\n"),
-          htmlContent: `<pre style="font-family:inherit">${textLines.join("\n")}</pre>`
-        })
+          htmlContent: `<pre style="font-family:inherit">${textLines.join("\n")}</pre>${payload.approval_url ? `<p><a href="${payload.approval_url}" style="font-size:16px;font-weight:bold;">Approve this song</a></p>` : ""}`,
+        }),
       });
-      
+
       if (!response.ok) {
         const err = await response.text();
         throw new Error(`Brevo API error: ${err}`);
       }
-      return;
+      delivered = true;
     } catch (err) {
       console.error("Brevo API notify failed:", err?.message || err);
     }
   }
 
   // 3) fallback: SMTP (will timeout on Render free tier)
-  if (mailTransporter && notifyEmail) {
+  if (!delivered && mailTransporter && notifyEmail) {
     try {
       const subject = `New song added: ${payload.song_title || "(no title)"}`;
-      const textLines = [
-        `Parasha: ${payload.parasha_id}`,
-        `Target: ${payload.target_kind}${payload.target_id ? " / " + payload.target_id : ""}`,
-        `Title: ${payload.song_title || ""}`,
-        `URL: ${payload.song_url || ""}`,
-        `Verse: ${payload.verse_ref || ""}`,
-        `Added by: ${payload.added_by || ""}`,
-        `ID: ${payload.link_id}`,
-        `Time: ${payload.timestamp}`,
-      ];
+      const textLines = buildLines();
       await mailTransporter.sendMail({
         from: process.env.NOTIFY_FROM || process.env.SMTP_USER,
         to: notifyEmail,
         subject,
         text: textLines.join("\n"),
-        html: `<pre style="font-family:inherit">${textLines.join("\n")}</pre>`,
+        html: `<pre style="font-family:inherit">${textLines.join("\n")}</pre>${payload.approval_url ? `<p><a href="${payload.approval_url}" style="font-size:16px;font-weight:bold;">Approve this song</a></p>` : ""}`,
       });
-      return;
+      delivered = true;
     } catch (err) {
       console.error("email notify failed:", err?.message || err);
     }
   }
 
   // fallback
-  console.log("New link added:", payload);
+  if (!delivered) {
+    console.log("New link added:", payload);
+  }
 }
 
 // 4) GET /api/links
@@ -477,6 +516,73 @@ app.get("/api/admin/verify", adminLimiter, (req, res) => {
   return res.status(401).json({ ok: false, error: "not-admin" });
 });
 
+app.get("/api/admin/links/pending", adminLimiter, requireAdmin, async (req, res) => {
+  try {
+    const pending = await getPendingLinks();
+    res.json(pending);
+  } catch (err) {
+    console.error("pending-links failed:", err);
+    res.status(500).json({ error: "pending-links-error" });
+  }
+});
+
+app.post("/api/admin/links/:id/approve", sensitiveLimiter, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const row = await approveLinkById(id);
+    if (!row) {
+      return res.status(404).json({ error: "link-not-found" });
+    }
+    res.json({ ok: true, link: row });
+  } catch (err) {
+    console.error("approve-link failed:", err);
+    res.status(500).json({ error: "approve-failed" });
+  }
+});
+
+app.post("/api/admin/links/:id/reject", sensitiveLimiter, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const row = await rejectLinkById(id);
+    if (!row) {
+      return res.status(404).json({ error: "link-not-found" });
+    }
+    res.json({ ok: true, link: row });
+  } catch (err) {
+    console.error("reject-link failed:", err);
+    res.status(500).json({ error: "reject-failed" });
+  }
+});
+
+app.get("/api/links/approve/:token", async (req, res) => {
+  const { token } = req.params;
+  if (!token || token.length < 10) {
+    return res.status(400).type("html").send(`<p>Invalid approval token.</p>`);
+  }
+  try {
+    const result = await approveLinkByToken(token);
+    if (!result) {
+      return res
+        .status(404)
+        .type("html")
+        .send(`<p>This approval link is not valid or was already used.</p>`);
+    }
+    const configuredBase = process.env.PUBLIC_BASE_URL || "/";
+    const baseUrl = configuredBase === "/" ? "/" : configuredBase.replace(/\/$/, "");
+    const safeTitle = escapeHtml(result.song_title || "the song");
+    const safeHref = escapeHtml(baseUrl);
+    res
+      .status(200)
+      .type("html")
+      .send(
+        `<!doctype html><html><head><meta charset="utf-8"><title>Song approved</title><style>body{font-family:system-ui,\"Segoe UI\",sans-serif;line-height:1.6;padding:2rem;background:#fdf6ec;color:#333;}a{color:#0056b3;text-decoration:none;}a:hover{text-decoration:underline;}</style></head><body><h1>Song approved</h1><p>Thank you! We have approved <strong>${safeTitle}</strong>.</p><p><a href="${safeHref}">Back to Parsha Songs</a></p></body></html>`
+      );
+  } catch (err) {
+    console.error("approve-token failed:", err);
+    res.status(500).type("html").send(`<p>Failed to approve this song.</p>`);
+  }
+});
+
 // test notification endpoint
 app.post("/api/test-notify", sensitiveLimiter, async (req, res) => {
   const sample = {
@@ -489,6 +595,7 @@ app.post("/api/test-notify", sensitiveLimiter, async (req, res) => {
     verse_ref: "Genesis 1:1",
     added_by: "tester",
     timestamp: new Date().toISOString(),
+    approval_url: "https://example.com/approve",
   };
   try {
     await notifyNewLink(sample);

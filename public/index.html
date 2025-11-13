@@ -184,6 +184,28 @@
         <button id="btn-admin-login">Login</button>
         <button id="btn-admin-logout" style="display:none">Logout</button>
         <button id="btn-stats" style="display:none">📊 Visit Stats</button>
+
+        <div id="moderation-section" style="display:none; margin-top:1rem; border-top:1px solid #ddd; padding-top:1rem;">
+            <h4 style="margin-top:0;">Pending submissions</h4>
+            <p style="margin:0 0 0.75rem 0; color:#555;">Review songs awaiting approval. Approve to publish or decline to keep them hidden.</p>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                <button id="btn-refresh-pending" type="button">Refresh pending</button>
+                <span id="pending-status" style="color:#555;"></span>
+            </div>
+            <div style="overflow-x:auto; margin-top:0.75rem;">
+                <table id="pending-table" style="width:100%; border-collapse:collapse; display:none;">
+                    <thead>
+                        <tr style="text-align:left; border-bottom:1px solid #ccc;">
+                            <th style="padding:6px 8px;">Song</th>
+                            <th style="padding:6px 8px;">Target</th>
+                            <th style="padding:6px 8px;">Info</th>
+                            <th style="padding:6px 8px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
     </section>
 
     <!-- floating help button -->
@@ -246,6 +268,7 @@
         let selectedKind = "parasha";
         let selectedHaftarahId = null;
         let selectedDisplayName = "";
+    let IS_ADMIN = false;
 
         // NEW: Tanach state
         let TANACH_BOOKS = [];
@@ -591,7 +614,7 @@
             }
             tbody.innerHTML = "";
 
-            const isAdmin = await adminVerify();
+            const isAdmin = IS_ADMIN;
 
             rows.forEach((row) => {
                 const tr = document.createElement("tr");
@@ -668,7 +691,7 @@
 
             // Update delete header visibility
             const deleteHeader = document.getElementById("delete-header");
-            if (deleteHeader) deleteHeader.style.display = (await adminVerify()) ? "" : "none";
+            if (deleteHeader) deleteHeader.style.display = isAdmin ? "" : "none";
 
             const loader = document.getElementById("links-loading");
             if (loader) loader.style.display = "none";
@@ -720,6 +743,190 @@
             if (e.key === "Escape") closeVerseModal();
         });
 
+        function labelForTarget(row) {
+            if (!row) return "";
+            if (row.target_kind === "parasha") {
+                const match = ALL_PARSHIOT.find((p) => p.id === row.parasha_id);
+                return match ? match.name_en : row.parasha_id;
+            }
+            if (row.target_kind === "haftarah") {
+                const parasha = ALL_PARSHIOT.find((p) => p.id === row.parasha_id);
+                const haftarot = parasha?.haftarot?.diaspora || [];
+                const match = haftarot.find((h) => h.id === row.target_id);
+                if (match?.name) return `${parasha?.name_en || row.parasha_id} – ${match.name}`;
+                return `${parasha?.name_en || row.parasha_id} – Haftarah`;
+            }
+            if (row.target_kind === "tanach" && row.target_id) {
+                const [bookId, chapter] = row.target_id.split(":");
+                const book = TANACH_BOOKS.find((b) => b.id === bookId);
+                if (book) return `${book.title_en} ${chapter || ""}`.trim();
+                return row.target_id;
+            }
+            return row.target_kind;
+        }
+
+        function formatDateTime(ts) {
+            if (!ts) return "";
+            const date = new Date(ts);
+            if (Number.isNaN(date.getTime())) return ts;
+            return date.toLocaleString();
+        }
+
+        function clearPendingModeration() {
+            const table = document.getElementById("pending-table");
+            const tbody = table?.querySelector("tbody");
+            if (tbody) tbody.innerHTML = "";
+            if (table) table.style.display = "none";
+            const statusEl = document.getElementById("pending-status");
+            if (statusEl) statusEl.textContent = "";
+        }
+
+        async function loadPendingModeration() {
+            const section = document.getElementById("moderation-section");
+            if (!section) return;
+            if (!IS_ADMIN) {
+                section.style.display = "none";
+                clearPendingModeration();
+                return;
+            }
+
+            section.style.display = "";
+            const statusEl = document.getElementById("pending-status");
+            const table = document.getElementById("pending-table");
+            const tbody = table?.querySelector("tbody");
+            if (!table || !tbody) return;
+
+            if (statusEl) statusEl.textContent = "Loading pending songs…";
+            table.style.display = "none";
+            tbody.innerHTML = "";
+
+            try {
+                const res = await fetch(`/api/admin/links/pending?ts=${Date.now()}`, { cache: "no-store" });
+                if (!res.ok) {
+                    const body = await res.json().catch(() => ({}));
+                    if (statusEl) statusEl.textContent = `Failed to load pending songs (${body.error || res.status}).`;
+                    return;
+                }
+                const rows = await res.json();
+                if (!Array.isArray(rows) || rows.length === 0) {
+                    if (statusEl) statusEl.textContent = "No pending submissions.";
+                    return;
+                }
+
+                if (statusEl) statusEl.textContent = `${rows.length} pending ${rows.length === 1 ? "song" : "songs"}.`;
+                table.style.display = "table";
+
+                rows.forEach((row) => {
+                    const tr = document.createElement("tr");
+                    tr.style.borderBottom = "1px solid #eee";
+
+                    const songCell = document.createElement("td");
+                    songCell.style.padding = "6px 8px";
+                    const titleDiv = document.createElement("div");
+                    titleDiv.textContent = row.song_title || "(no title)";
+                    titleDiv.style.fontWeight = "600";
+                    songCell.appendChild(titleDiv);
+                    if (row.song_url) {
+                        const linkEl = document.createElement("a");
+                        linkEl.href = row.song_url;
+                        linkEl.target = "_blank";
+                        linkEl.rel = "noopener";
+                        linkEl.textContent = row.song_url;
+                        linkEl.style.fontSize = "0.85rem";
+                        linkEl.style.wordBreak = "break-all";
+                        songCell.appendChild(linkEl);
+                    }
+                    tr.appendChild(songCell);
+
+                    const targetCell = document.createElement("td");
+                    targetCell.style.padding = "6px 8px";
+                    targetCell.textContent = labelForTarget(row);
+                    tr.appendChild(targetCell);
+
+                    const infoCell = document.createElement("td");
+                    infoCell.style.padding = "6px 8px";
+                    infoCell.style.fontSize = "0.85rem";
+                    infoCell.style.color = "#444";
+                    const infoLines = [];
+                    if (row.added_by) infoLines.push(`Added by: ${row.added_by}`);
+                    if (row.verse_ref) infoLines.push(`Verse: ${row.verse_ref}`);
+                    infoLines.push(`Submitted: ${formatDateTime(row.added_at)}`);
+                    infoLines.forEach((line) => {
+                        const div = document.createElement("div");
+                        div.textContent = line;
+                        infoCell.appendChild(div);
+                    });
+                    tr.appendChild(infoCell);
+
+                    const actionsCell = document.createElement("td");
+                    actionsCell.style.padding = "6px 8px";
+                    const wrap = document.createElement("div");
+                    wrap.style.display = "flex";
+                    wrap.style.gap = "6px";
+
+                    const approveBtn = document.createElement("button");
+                    const rejectBtn = document.createElement("button");
+
+                    approveBtn.textContent = "Approve";
+                    approveBtn.addEventListener("click", async () => {
+                        approveBtn.disabled = true;
+                        rejectBtn.disabled = true;
+                        try {
+                            await handleModerationAction(row.id, "approve");
+                        } catch (err) {
+                            alert("Approve failed: " + (err.message || err));
+                            approveBtn.disabled = false;
+                            rejectBtn.disabled = false;
+                        }
+                    });
+                    wrap.appendChild(approveBtn);
+
+                    rejectBtn.textContent = "Decline";
+                    rejectBtn.addEventListener("click", async () => {
+                        if (!confirm("Decline this song?")) return;
+                        approveBtn.disabled = true;
+                        rejectBtn.disabled = true;
+                        try {
+                            await handleModerationAction(row.id, "reject");
+                        } catch (err) {
+                            alert("Decline failed: " + (err.message || err));
+                            approveBtn.disabled = false;
+                            rejectBtn.disabled = false;
+                        }
+                    });
+                    wrap.appendChild(rejectBtn);
+
+                    actionsCell.appendChild(wrap);
+                    tr.appendChild(actionsCell);
+
+                    tbody.appendChild(tr);
+                });
+            } catch (err) {
+                console.error("pending-load failed:", err);
+                if (statusEl) statusEl.textContent = "Failed to load pending songs.";
+            }
+        }
+
+        async function handleModerationAction(id, action) {
+            const endpoint = action === "approve"
+                ? `/api/admin/links/${id}/approve`
+                : `/api/admin/links/${id}/reject`;
+            const res = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" } });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || data?.ok === false) {
+                throw new Error(data?.error || res.statusText || "request-failed");
+            }
+            if (typeof showFlash === "function") {
+                showFlash(
+                    action === "approve" ? "Song approved and published." : "Song declined.",
+                    action === "approve" ? "success" : "error",
+                    4000
+                );
+            }
+            await loadPendingModeration();
+            await loadLinksForCurrentSelection();
+        }
+
         // REMOVE OLD ADMIN UI FUNCTIONS - DELETE updateAdminUI() and old btn-admin-set/clear handlers
 
         // NEW SESSION-BASED ADMIN FUNCTIONS
@@ -759,12 +966,22 @@
 
         async function refreshAdminState() {
             const isAdmin = await adminVerify();
+            IS_ADMIN = isAdmin;
             const el = document.getElementById("admin-status");
             if (el) el.textContent = isAdmin ? "✅ Admin session active" : "";
 
             document.getElementById("btn-admin-login").style.display = isAdmin ? "none" : "";
             document.getElementById("btn-admin-logout").style.display = isAdmin ? "" : "none";
             document.getElementById("btn-stats").style.display = isAdmin ? "" : "none";
+
+            const moderationSection = document.getElementById("moderation-section");
+            if (moderationSection) moderationSection.style.display = isAdmin ? "" : "none";
+
+            if (isAdmin) {
+                await loadPendingModeration();
+            } else {
+                clearPendingModeration();
+            }
         }
 
         document.getElementById("btn-admin-login")?.addEventListener("click", async () => {
@@ -806,6 +1023,10 @@
                 alert("Failed to load stats: " + err.message);
                 console.error(err);
             }
+        });
+
+        document.getElementById("btn-refresh-pending")?.addEventListener("click", async () => {
+            await loadPendingModeration();
         });
 
         refreshAdminState();
@@ -986,11 +1207,16 @@
                 // always clear verse field after save; do not auto-fill
                 document.getElementById("verse-ref").value = "";
 
-                                if (typeof showFlash === "function") {
-                                        showFlash("Thank you for adding this song. You are amazing!");
-                                } else {
-                                        console.log("Thank you for adding this song!");
-                                }
+                if (typeof showFlash === "function") {
+                    const pending = data?.status === "pending";
+                    showFlash(
+                        pending
+                            ? "Shkoyach for submitting! We'll review and publish it once approved."
+                            : "Song added and published. Thank you!"
+                    );
+                } else {
+                    console.log("Thank you for adding this song!");
+                }
             } catch (err) {
                 alert("Save failed: " + err.message);
             }

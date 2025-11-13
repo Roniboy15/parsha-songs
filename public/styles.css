@@ -163,13 +163,6 @@ table {
   font-family: var(--font-display);
 }
 
-/* subtle descriptive line under the title */
-.site-subtitle {
-  margin: 4px 0 0 0;
-  font-size: 0.95rem;
-  color: var(--muted);
-}
-
 /* keep title readable on small screens */
 @media (max-width: 420px) {
   .site-title .main-title {
@@ -381,8 +374,7 @@ html, body {
 @media (max-width: 420px) {
     #links-table td.col-song,
     #links-table th.col-song {
-    line-clamp: 3;
-    -webkit-line-clamp: 3;
+        -webkit-line-clamp: 3;
         max-width: 160px;
         font-size: clamp(0.78rem, 2.6vw, 0.95rem);
     }

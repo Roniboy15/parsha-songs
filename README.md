@@ -13,7 +13,7 @@ A web application for discovering and sharing songs that connect to the Torah re
   - Haftarah reading
   - Tanach chapter (any book + chapter)
 - Smooth scrolling and loading indicator for better UX
-- Admin mode: delete links and view simple visit stats
+- Admin mode: delete links, moderate pending submissions, and view visit stats
 
 ## Tech Stack
 
@@ -66,6 +66,7 @@ npm run dev
 Environment variables (optional):
 - ADMIN_TOKEN: string used for admin login
 - DATABASE_URL: Postgres connection string (set on Render); if absent, SQLite is used
+- APPROVAL_BASE_URL: optional; absolute base URL used when generating approval links in notification emails (falls back to PUBLIC_BASE_URL or request host)
 - SMTP_HOST/SMTP_USER/SMTP_PASS (optional): email notifications; otherwise a webhook or console log is used
 
 ## Data Model
@@ -113,9 +114,15 @@ Admin
 - `POST /api/admin/login` — body: `{ token }` (compares to `ADMIN_TOKEN`)
 - `POST /api/admin/logout`
 - `GET /api/admin/verify`
+- `GET /api/admin/links/pending` — list submissions waiting for approval
+- `POST /api/admin/links/:id/approve` — publish a pending submission
+- `POST /api/admin/links/:id/reject` — decline a pending submission (keeps record hidden)
 - `DELETE /api/links/:id` — delete a link
 - `DELETE /api/songs/:id` — delete a song (and its links)
 - `GET /api/stats` — basic visit stats
+
+Public approval flow
+- `GET /api/links/approve/:token` — approve a pending submission via emailed token (useful when moderating from email)
 
 ## UX Notes
 
