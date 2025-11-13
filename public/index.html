@@ -96,7 +96,7 @@
     <header class="site-header">
         <div class="site-title">
             <h1 class="main-title">Make the Parasha Sing</h1>
-            <p class="site-subtitle">Connect songs to Parshiot, Haftarot, and Tanach chapters.</p>
+            <p class="site-subtitle">Connect songs to Parshiot, Haftarot, and Tanach.</p>
             <div id="total-songs" class="songs-count"></div>
         </div>
 
@@ -251,7 +251,7 @@
 
     <script>
         // --- ADD: simple flash helper so showFlash() exists ---
-        function showFlash(message, type = "success", ms = 3000) {
+        function showFlash(message, type = "success", ms = 6000) {
             const el = document.getElementById("flash");
             if (!el) return;
             el.textContent = message;
