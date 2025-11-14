@@ -301,14 +301,15 @@
             }
         }
 
-        function beginLinksLoad() {
+        function beginLinksLoad(options = {}) {
+            const { skipScroll = false } = options;
             const tbody = document.querySelector("#links-table tbody");
             if (tbody) tbody.innerHTML = "";
             const info = document.getElementById("links-info");
             if (info) info.textContent = "";
             const loader = document.getElementById("links-loading");
             if (loader) loader.style.display = "inline-flex";
-            scrollToSongsList();
+            if (!skipScroll) scrollToSongsList();
         }
 
         // 1) load parshiot and build dropdown
@@ -346,9 +347,9 @@
             if (parshiot.length) {
                 selectedParashaId = parshiot[0].id;
                 setKind("parasha"); // ensure we start in parasha mode
-                beginLinksLoad();
+                beginLinksLoad({ skipScroll: true });
                 populateHaftarot(selectedParashaId);
-                await loadLinksForCurrentSelection();
+                await loadLinksForCurrentSelection({ skipScroll: true });
             }
 
             // when user changes parasha from list: force back to parasha mode
@@ -569,12 +570,15 @@
         });
 
         // 6) load links for current parasha/kind or tanach
-        async function loadLinksForCurrentSelection() {
+        let firstAutoRender = true;
+
+        async function loadLinksForCurrentSelection({ skipScroll = false } = {}) {
             const startedAt = performance.now();
             if (currentLinksAbort) currentLinksAbort.abort();
             currentLinksAbort = new AbortController();
             const { signal } = currentLinksAbort;
-            beginLinksLoad();
+            const effectiveSkip = skipScroll || firstAutoRender;
+            beginLinksLoad({ skipScroll: effectiveSkip });
 
             let rows = [];
             let totalData = { total: 0 };
@@ -615,6 +619,8 @@
             if (elapsed < MIN_LINK_LOAD_MS) {
                 await sleep(MIN_LINK_LOAD_MS - elapsed);
             }
+
+            firstAutoRender = false;
 
             const totalSongs = document.getElementById("total-songs");
             totalSongs.textContent = `${totalData.total} songs connected so far`;
