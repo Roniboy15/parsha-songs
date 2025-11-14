@@ -242,8 +242,8 @@
                     <li>Add verse references to show the connection (e.g. "1:22")</li>
                     <li>Help build a musical companion to Torah study!</li>
                 </ul>
-                <p><strong>Contact:</strong>
-                    <a href="mailto:jaron.111@hotmail.com">jaron.111@hotmail.com</a>
+                <p><strong>Questions or feedback?</strong>
+                    <button type="button" class="contact-email" data-email-local="106,97,114,111,110,46,49,49,49" data-email-domain="104,111,116,109,97,105,108,46,99,111,109" style="background:none;border:none;color:#0066cc;text-decoration:underline;cursor:pointer;font:inherit;padding:0;">Email me</button>
                 </p>
             </div>
         </div>
@@ -269,6 +269,8 @@
         let selectedHaftarahId = null;
         let selectedDisplayName = "";
     let IS_ADMIN = false;
+    const MIN_LINK_LOAD_MS = 900;
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
         // NEW: Tanach state
         let TANACH_BOOKS = [];
@@ -567,6 +569,7 @@
 
         // 6) load links for current parasha/kind or tanach
         async function loadLinksForCurrentSelection() {
+            const startedAt = performance.now();
             if (currentLinksAbort) currentLinksAbort.abort();
             currentLinksAbort = new AbortController();
             const { signal } = currentLinksAbort;
@@ -601,6 +604,15 @@
                 return;
             } finally {
                 currentLinksAbort = null;
+            }
+
+            if (signal.aborted) {
+                return;
+            }
+
+            const elapsed = performance.now() - startedAt;
+            if (elapsed < MIN_LINK_LOAD_MS) {
+                await sleep(MIN_LINK_LOAD_MS - elapsed);
             }
 
             const totalSongs = document.getElementById("total-songs");
@@ -1032,10 +1044,30 @@
         refreshAdminState();
 
         // Set info box contact line
+        function initContactLinks() {
+            document.querySelectorAll(".contact-email").forEach((btn) => {
+                if (btn.dataset.bound === "1") return;
+                btn.dataset.bound = "1";
+                btn.addEventListener("click", () => {
+                    const toChars = (value) =>
+                        value
+                            .split(",")
+                            .map((code) => Number.parseInt(code.trim(), 10))
+                            .filter((n) => Number.isFinite(n));
+                    const localCodes = toChars(btn.dataset.emailLocal || "");
+                    const domainCodes = toChars(btn.dataset.emailDomain || "");
+                    const local = String.fromCharCode(...localCodes);
+                    const domain = String.fromCharCode(...domainCodes);
+                    window.location.href = `mailto:${local}@${domain}`;
+                });
+            });
+        }
+
         const infoEl = document.getElementById("links-info");
         if (infoEl) {
-            infoEl.innerHTML = 'Questions or feedback? Contact <a href="mailto:jaron.111@hotmail.com">jaron.111@hotmail.com</a>';
+            infoEl.innerHTML = 'Questions or feedback? <button type="button" class="contact-email" data-email-local="106,97,114,111,110,46,49,49,49" data-email-domain="104,111,116,109,97,105,108,46,99,111,109" style="background:none;border:none;color:#0066cc;text-decoration:underline;cursor:pointer;font:inherit;padding:0;">Email me</button>';
         }
+        initContactLinks();
 
                 // initial load
                 loadParshiot();
