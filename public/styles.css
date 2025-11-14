@@ -25,14 +25,44 @@ h1, h2 {
 }
 
 input, select, button {
-    padding: 8px;
-    margin: 5px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
+  padding: 8px;
+  margin: 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
 }
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
+  outline: 2px solid var(--accent-400);
+  outline-offset: 2px;
+}
+
+.search-button {
+  position: fixed;
+  bottom: calc(20px + 50px + 12px);
+  right: 20px;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--accent-700);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  font-size: 1.5rem;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  transition: background 0.2s ease, transform 0.2s ease;
+  z-index: 1100;
+}
+.search-button:hover {
+  background: rgba(255, 255, 255, 0.88);
+  transform: translateY(-2px);
+}
+.search-button:focus-visible {
   outline: 2px solid var(--accent-400);
   outline-offset: 2px;
 }
@@ -44,19 +74,19 @@ input, select, button, textarea {
 }
 
 button {
-    background: var(--accent-600);
-    color: #fff;
-    border: none;
-    cursor: pointer;
-    transition: background 0.2s;
+  background: var(--accent-600);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s;
 }
 
 button:hover {
-    background: var(--accent-700);
+  background: var(--accent-700);
 }
 button:focus-visible {
-    outline: 2px solid var(--accent-400);
-    outline-offset: 2px;
+  outline: 2px solid var(--accent-400);
+  outline-offset: 2px;
 }
 
 table {
@@ -153,6 +183,121 @@ table {
   gap: 12px;
   position: relative;
   z-index: 10;
+}
+
+.search-panel {
+  position: fixed;
+  bottom: calc(20px + 50px + 12px + 48px + 12px);
+  right: 20px;
+  width: min(360px, calc(100% - 40px));
+  max-height: 70vh;
+  display: none;
+  z-index: 1095;
+}
+.search-panel.open {
+  display: block;
+}
+.search-panel-inner {
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.12);
+  backdrop-filter: blur(8px);
+}
+.search-panel-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+#search-input {
+  flex: 1;
+  margin: 0;
+  padding: 8px 10px;
+}
+.search-close {
+  border: none;
+  background: rgba(0,0,0,0.05);
+  color: var(--text);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.search-close:hover {
+  background: rgba(0,0,0,0.15);
+}
+.search-close:focus-visible {
+  outline: 2px solid var(--accent-400);
+  outline-offset: 2px;
+}
+.search-status {
+  min-height: 20px;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.search-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 45vh;
+  overflow-y: auto;
+  display: grid;
+  gap: 6px;
+}
+.search-results li {
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(255,255,255,0.92);
+}
+.search-results button {
+  background: none;
+  border: none;
+  text-align: left;
+  width: 100%;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+}
+.search-results button:hover {
+  text-decoration: none;
+}
+.search-result-title {
+  font-weight: 600;
+  margin-bottom: 2px;
+  color: var(--text);
+}
+.search-result-meta {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.search-result-verse {
+  font-size: 0.85rem;
+  color: var(--accent-700);
+}
+.search-result-link {
+  font-size: 0.78rem;
+  color: var(--accent-700);
+  word-break: break-word;
+  opacity: 0.85;
+}
+
+@media (max-width: 600px) {
+  .search-button {
+    bottom: calc(20px + 50px + 12px);
+    right: 20px;
+    width: 50px;
+    height: 50px;
+  }
+  .search-panel {
+    bottom: calc(20px + 50px + 12px + 50px + 12px);
+    right: 20px;
+    left: 20px;
+    width: auto;
+  }
 }
 
 .site-title .main-title {
@@ -374,6 +519,7 @@ html, body {
 @media (max-width: 420px) {
     #links-table td.col-song,
     #links-table th.col-song {
+    line-clamp: 3;
         -webkit-line-clamp: 3;
         max-width: 160px;
         font-size: clamp(0.78rem, 2.6vw, 0.95rem);

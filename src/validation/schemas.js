@@ -20,6 +20,10 @@ export const tanachLinksQuerySchema = z.object({
   ),
 });
 
+export const searchSongsQuerySchema = z.object({
+  q: z.string().trim().min(2, "query too short").max(100, "query too long"),
+});
+
 export const linkCreateSchema = z
   .object({
     parasha_id: z.string().trim().regex(idPattern, "invalid parasha_id"),

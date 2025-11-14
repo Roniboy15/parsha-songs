@@ -208,8 +208,21 @@
         </div>
     </section>
 
-    <!-- floating help button -->
+    <!-- floating controls -->
+    <button id="search-btn" class="search-button" aria-label="Search songs" aria-expanded="false">🔍</button>
     <button id="help-btn" class="help-button" aria-label="Help">?</button>
+
+    <!-- search panel -->
+    <div id="search-panel" class="search-panel" aria-hidden="true">
+        <div class="search-panel-inner" role="dialog" aria-modal="false" aria-label="Search songs by title">
+            <div class="search-panel-header">
+                <input id="search-input" type="search" placeholder="Search songs by title" autocomplete="off" />
+                <button id="search-close" class="search-close" aria-label="Close search">×</button>
+            </div>
+            <div id="search-status" class="search-status" role="status" aria-live="polite"></div>
+            <ul id="search-results" class="search-results" role="listbox"></ul>
+        </div>
+    </div>
 
     <!-- help modal -->
     <div id="help-modal" class="modal" aria-hidden="true" style="display:none">
@@ -263,17 +276,24 @@
             el.__t = setTimeout(() => (el.style.display = "none"), ms);
         }
 
-        let ALL_PARSHIOT = [];
+    let ALL_PARSHIOT = [];
+    let parshiotReadyPromise = null;
         let selectedParashaId = null;
         let selectedKind = "parasha";
         let selectedHaftarahId = null;
         let selectedDisplayName = "";
-    let IS_ADMIN = false;
-    const MIN_LINK_LOAD_MS = 900;
-    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        let IS_ADMIN = false;
+        const MIN_LINK_LOAD_MS = 700;
+        const SEARCH_DEBOUNCE_MS = 250;
+        const SEARCH_MIN_QUERY = 2;
+        let searchAbortController = null;
+        let searchDebounceTimer = null;
+        let lastSearchTerm = "";
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
         // NEW: Tanach state
-        let TANACH_BOOKS = [];
+    let TANACH_BOOKS = [];
+    let tanachBooksReadyPromise = null;
         let selectedBookId = null;     // normalized id
         let selectedBookTitle = null;  // English title
         let selectedChapter = null;
@@ -314,90 +334,115 @@
 
         // 1) load parshiot and build dropdown
         async function loadParshiot() {
-            const res = await fetch("/api/parshiot");
-            const parshiot = await res.json();
-            ALL_PARSHIOT = parshiot;
+            if (parshiotReadyPromise) return parshiotReadyPromise;
+            parshiotReadyPromise = (async () => {
+                const res = await fetch("/api/parshiot");
+                if (!res.ok) throw new Error("Failed to load parshiot");
+                const parshiot = await res.json();
+                ALL_PARSHIOT = parshiot;
 
-            const byBook = {};
-            parshiot.forEach((p) => {
-                if (!byBook[p.book]) byBook[p.book] = [];
-                byBook[p.book].push(p);
-            });
-
-            const order = ["bereshit", "shemot", "vayikra", "bamidbar", "devarim"];
-            const select = document.getElementById("parsha-list");
-            select.innerHTML = "";
-
-            order.forEach((book) => {
-                const list = byBook[book];
-                if (!list) return;
-                const og = document.createElement("optgroup");
-                og.label = list[0].book_en;
-                list.sort((a, b) => a.order_index - b.order_index);
-                list.forEach((p) => {
-                    const opt = document.createElement("option");
-                    opt.value = p.id;
-                    opt.textContent = p.name_en;
-                    og.appendChild(opt);
+                const byBook = {};
+                parshiot.forEach((p) => {
+                    if (!byBook[p.book]) byBook[p.book] = [];
+                    byBook[p.book].push(p);
                 });
-                select.appendChild(og);
-            });
 
-            // default selection
-            if (parshiot.length) {
-                selectedParashaId = parshiot[0].id;
-                setKind("parasha"); // ensure we start in parasha mode
-                beginLinksLoad({ skipScroll: true });
-                populateHaftarot(selectedParashaId);
-                await loadLinksForCurrentSelection({ skipScroll: true });
+                const order = ["bereshit", "shemot", "vayikra", "bamidbar", "devarim"];
+                const select = document.getElementById("parsha-list");
+                if (select) select.innerHTML = "";
+
+                order.forEach((book) => {
+                    const list = byBook[book];
+                    if (!list) return;
+                    const og = document.createElement("optgroup");
+                    og.label = list[0].book_en;
+                    list.sort((a, b) => a.order_index - b.order_index);
+                    list.forEach((p) => {
+                        const opt = document.createElement("option");
+                        opt.value = p.id;
+                        opt.textContent = p.name_en;
+                        og.appendChild(opt);
+                    });
+                    select?.appendChild(og);
+                });
+
+                if (parshiot.length) {
+                    selectedParashaId = parshiot[0].id;
+                    setKind("parasha");
+                    beginLinksLoad({ skipScroll: true });
+                    populateHaftarot(selectedParashaId);
+                    await loadLinksForCurrentSelection({ skipScroll: true });
+                }
+
+                select?.addEventListener("change", async (e) => {
+                    selectedParashaId = e.target.value;
+                    setKind("parasha");
+                    beginLinksLoad();
+                    populateHaftarot(selectedParashaId);
+                    await loadLinksForCurrentSelection();
+                    scrollToSongsList();
+                });
+
+                return parshiot;
+            })();
+
+            try {
+                await parshiotReadyPromise;
+            } catch (err) {
+                parshiotReadyPromise = null;
+                throw err;
             }
-
-            // when user changes parasha from list: force back to parasha mode
-            select.addEventListener("change", async (e) => {
-                selectedParashaId = e.target.value;
-                setKind("parasha");
-                beginLinksLoad();
-                populateHaftarot(selectedParashaId);
-                await loadLinksForCurrentSelection();
-                scrollToSongsList();
-            });
+            return parshiotReadyPromise;
         }
 
         // NEW: load tanach books and populate dropdowns
         async function loadTanachBooks() {
-            const status = document.getElementById("tanach-load-status");
-            try {
-                status.textContent = "Loading Tanach books…";
-                const res = await fetch("/api/tanach/books");
-                if (!res.ok) throw new Error("Failed to load Tanach list");
-                TANACH_BOOKS = await res.json();
+            if (tanachBooksReadyPromise) return tanachBooksReadyPromise;
+            tanachBooksReadyPromise = (async () => {
+                const status = document.getElementById("tanach-load-status");
+                try {
+                    if (status) status.textContent = "Loading Tanach books…";
+                    const res = await fetch("/api/tanach/books");
+                    if (!res.ok) throw new Error("Failed to load Tanach list");
+                    TANACH_BOOKS = await res.json();
 
-                const bookSel = document.getElementById("tanach-book-list");
-                const chapSel = document.getElementById("tanach-chapter-list");
-                bookSel.innerHTML = "";
-                chapSel.innerHTML = "";
+                    const bookSel = document.getElementById("tanach-book-list");
+                    const chapSel = document.getElementById("tanach-chapter-list");
+                    if (bookSel) bookSel.innerHTML = "";
+                    if (chapSel) chapSel.innerHTML = "";
 
-                if (!Array.isArray(TANACH_BOOKS) || TANACH_BOOKS.length === 0) {
-                    status.textContent = "No Tanach books available.";
-                    return;
+                    if (!Array.isArray(TANACH_BOOKS) || TANACH_BOOKS.length === 0) {
+                        if (status) status.textContent = "No Tanach books available.";
+                        return TANACH_BOOKS;
+                    }
+
+                    TANACH_BOOKS.forEach((b) => {
+                        const opt = document.createElement("option");
+                        opt.value = b.id;
+                        opt.textContent = b.title_en;
+                        bookSel?.appendChild(opt);
+                    });
+
+                    selectedBookId = TANACH_BOOKS[0].id;
+                    selectedBookTitle = TANACH_BOOKS[0].title_en;
+                    fillChapterSelect(TANACH_BOOKS[0].chapters);
+                    if (status) status.textContent = "";
+                    return TANACH_BOOKS;
+                } catch (err) {
+                    console.error(err);
+                    const statusEl = document.getElementById("tanach-load-status");
+                    if (statusEl) statusEl.textContent = "Failed to load Tanach data.";
+                    throw err;
                 }
+            })();
 
-                TANACH_BOOKS.forEach((b) => {
-                    const opt = document.createElement("option");
-                    opt.value = b.id;
-                    // Show only the book title (no chapter counts in label)
-                    opt.textContent = b.title_en;
-                    bookSel.appendChild(opt);
-                });
-
-                selectedBookId = TANACH_BOOKS[0].id;
-                selectedBookTitle = TANACH_BOOKS[0].title_en;
-                fillChapterSelect(TANACH_BOOKS[0].chapters);
-                status.textContent = "";
+            try {
+                await tanachBooksReadyPromise;
             } catch (err) {
-                console.error(err);
-                status.textContent = "Failed to load Tanach data.";
+                tanachBooksReadyPromise = null;
+                throw err;
             }
+            return tanachBooksReadyPromise;
         }
 
                 // removed: no longer auto-fill verse input with chapter (was confusing)
@@ -784,6 +829,308 @@
             return row.target_kind;
         }
 
+        function openSearchPanel() {
+            const panel = document.getElementById("search-panel");
+            const button = document.getElementById("search-btn");
+            const input = document.getElementById("search-input");
+            if (!panel || !button || !input) return;
+            if (panel.classList.contains("open")) {
+                input.focus();
+                input.select();
+                return;
+            }
+            panel.classList.add("open");
+            panel.setAttribute("aria-hidden", "false");
+            button.setAttribute("aria-expanded", "true");
+            requestAnimationFrame(() => {
+                input.focus();
+                input.select();
+            });
+            lastSearchTerm = input.value.trim();
+            if (lastSearchTerm.length >= SEARCH_MIN_QUERY) {
+                queueSearch(lastSearchTerm);
+            } else {
+                renderSearchStatus(`Type at least ${SEARCH_MIN_QUERY} letters to search.`);
+            }
+        }
+
+        function closeSearchPanel({ restoreFocus = false } = {}) {
+            const panel = document.getElementById("search-panel");
+            const button = document.getElementById("search-btn");
+            if (!panel || !panel.classList.contains("open")) {
+                if (restoreFocus && button) button.focus();
+                return;
+            }
+            panel.classList.remove("open");
+            panel.setAttribute("aria-hidden", "true");
+            if (button) {
+                button.setAttribute("aria-expanded", "false");
+                if (restoreFocus) button.focus();
+            }
+            if (searchDebounceTimer) {
+                clearTimeout(searchDebounceTimer);
+                searchDebounceTimer = null;
+            }
+            abortSearchRequest();
+        }
+
+        function abortSearchRequest() {
+            if (searchAbortController) {
+                searchAbortController.abort();
+                searchAbortController = null;
+            }
+        }
+
+        function renderSearchStatus(message) {
+            const status = document.getElementById("search-status");
+            if (!status) return;
+            status.textContent = message || "";
+            status.style.display = message ? "" : "none";
+        }
+
+        function clearSearchResults() {
+            const list = document.getElementById("search-results");
+            if (list) list.innerHTML = "";
+        }
+
+        function getSearchResultButtons() {
+            return Array.from(document.querySelectorAll("#search-results button.search-result"));
+        }
+
+        function focusSearchResultButton(index) {
+            const buttons = getSearchResultButtons();
+            if (!buttons.length) return;
+            const safeIndex = Math.max(0, Math.min(index, buttons.length - 1));
+            buttons[safeIndex].focus();
+        }
+
+        function queueSearch(rawTerm) {
+            const term = (rawTerm || "").trim();
+            lastSearchTerm = term;
+            if (searchDebounceTimer) {
+                clearTimeout(searchDebounceTimer);
+                searchDebounceTimer = null;
+            }
+            if (term.length < SEARCH_MIN_QUERY) {
+                abortSearchRequest();
+                clearSearchResults();
+                renderSearchStatus(
+                    term.length === 0
+                        ? `Type at least ${SEARCH_MIN_QUERY} letters to search.`
+                        : "Keep typing…"
+                );
+                return;
+            }
+            renderSearchStatus("Searching…");
+            searchDebounceTimer = setTimeout(() => {
+                performSongSearch(term);
+            }, SEARCH_DEBOUNCE_MS);
+        }
+
+        async function performSongSearch(term) {
+            abortSearchRequest();
+            const list = document.getElementById("search-results");
+            if (list) list.setAttribute("aria-busy", "true");
+            searchAbortController = new AbortController();
+            const { signal } = searchAbortController;
+            try {
+                const params = new URLSearchParams({ q: term });
+                const res = await fetch(`/api/search/songs?${params.toString()}`, { signal, cache: "no-store" });
+                if (!res.ok) throw new Error("Search failed");
+                const rows = await res.json();
+                if (signal.aborted || term !== lastSearchTerm) return;
+                if (!Array.isArray(rows) || rows.length === 0) {
+                    clearSearchResults();
+                    renderSearchStatus("No songs found.");
+                    return;
+                }
+                renderSearchResults(rows);
+                renderSearchStatus(rows.length === 1 ? "1 result" : `${rows.length} results`);
+            } catch (err) {
+                if (err.name === "AbortError") return;
+                console.error("Song search failed:", err);
+                renderSearchStatus("Search failed. Please try again.");
+            } finally {
+                if (list) list.removeAttribute("aria-busy");
+                searchAbortController = null;
+            }
+        }
+
+        function renderSearchResults(rows) {
+            const list = document.getElementById("search-results");
+            if (!list) return;
+            list.innerHTML = "";
+            rows.forEach((row, index) => {
+                const li = document.createElement("li");
+                li.setAttribute("role", "presentation");
+                const btn = document.createElement("button");
+                btn.type = "button";
+                btn.className = "search-result";
+                btn.setAttribute("role", "option");
+                btn.dataset.index = String(index);
+                btn.addEventListener("click", () => {
+                    navigateToSearchResult(row);
+                });
+                btn.addEventListener("keydown", (event) => {
+                    if (event.key === "ArrowDown") {
+                        event.preventDefault();
+                        focusSearchResultButton(index + 1);
+                    } else if (event.key === "ArrowUp") {
+                        event.preventDefault();
+                        if (index === 0) {
+                            const input = document.getElementById("search-input");
+                            if (input) {
+                                input.focus();
+                                input.select();
+                            }
+                        } else {
+                            focusSearchResultButton(index - 1);
+                        }
+                    }
+                });
+
+                const title = document.createElement("div");
+                title.className = "search-result-title";
+                title.textContent = row.song_title || "(Untitled)";
+
+                const meta = document.createElement("div");
+                meta.className = "search-result-meta";
+                meta.textContent = labelForTarget(row);
+
+                btn.appendChild(title);
+                btn.appendChild(meta);
+
+                if (row.verse_ref) {
+                    const verse = document.createElement("div");
+                    verse.className = "search-result-verse";
+                    verse.textContent = row.verse_ref;
+                    btn.appendChild(verse);
+                }
+
+                if (row.song_url) {
+                    const link = document.createElement("div");
+                    link.className = "search-result-link";
+                    let displayUrl = row.song_url;
+                    if (displayUrl.length > 60) {
+                        displayUrl = `${displayUrl.slice(0, 57)}...`;
+                    }
+                    link.textContent = displayUrl;
+                    link.title = row.song_url;
+                    btn.appendChild(link);
+                }
+
+                li.appendChild(btn);
+                list.appendChild(li);
+            });
+        }
+
+        async function navigateToSearchResult(row) {
+            if (!row) return;
+            closeSearchPanel();
+            try {
+                await loadParshiot();
+
+                if (row.target_kind === "tanach" && row.target_id) {
+                    await loadTanachBooks();
+                    const [bookId, chapterRaw] = row.target_id.split(":");
+                    if (!bookId) throw new Error("Missing Tanach reference");
+                    const book = TANACH_BOOKS.find((b) => b.id === bookId);
+                    if (!book) throw new Error("Book not found in Tanach list");
+                    selectedBookId = bookId;
+                    selectedBookTitle = book.title_en;
+                    const bookSel = document.getElementById("tanach-book-list");
+                    if (bookSel) bookSel.value = bookId;
+                    fillChapterSelect(book.chapters);
+                    const chapter = Number.parseInt(chapterRaw || "1", 10) || 1;
+                    selectedChapter = chapter;
+                    const chapterSel = document.getElementById("tanach-chapter-list");
+                    if (chapterSel) chapterSel.value = String(chapter);
+                    await applyTanachSelectionUpdate();
+                    return;
+                }
+
+                if (!row.parasha_id) throw new Error("Missing parasha reference");
+                selectedParashaId = row.parasha_id;
+                const parshaSel = document.getElementById("parsha-list");
+                if (parshaSel) parshaSel.value = selectedParashaId;
+
+                if (row.target_kind === "haftarah") {
+                    setKind("haftarah");
+                    populateHaftarot(selectedParashaId);
+                    const hafSel = document.getElementById("haftarah-list");
+                    if (hafSel) {
+                        const values = Array.from(hafSel.options).map((opt) => opt.value);
+                        if (values.includes(row.target_id)) {
+                            selectedHaftarahId = row.target_id;
+                            hafSel.value = row.target_id;
+                        }
+                    }
+                } else {
+                    setKind("parasha");
+                    populateHaftarot(selectedParashaId);
+                }
+
+                updateSelectedDisplayName();
+                await loadLinksForCurrentSelection();
+                scrollToSongsList();
+            } catch (err) {
+                console.error("Failed to open selection from search:", err);
+                if (typeof showFlash === "function") {
+                    showFlash("Could not open that selection. Please pick it manually.", "error", 5000);
+                }
+            }
+        }
+
+        function initSearchUI() {
+            const button = document.getElementById("search-btn");
+            const panel = document.getElementById("search-panel");
+            const input = document.getElementById("search-input");
+            const closeBtn = document.getElementById("search-close");
+            const results = document.getElementById("search-results");
+            if (!button || !panel || !input || !closeBtn || !results) return;
+
+            button.addEventListener("click", () => {
+                if (panel.classList.contains("open")) {
+                    closeSearchPanel({ restoreFocus: true });
+                } else {
+                    openSearchPanel();
+                }
+            });
+
+            closeBtn.addEventListener("click", () => closeSearchPanel({ restoreFocus: true }));
+
+            input.addEventListener("input", (event) => queueSearch(event.target.value));
+            input.addEventListener("keydown", (event) => {
+                if (event.key === "ArrowDown") {
+                    const buttons = getSearchResultButtons();
+                    if (buttons.length) {
+                        event.preventDefault();
+                        buttons[0].focus();
+                    }
+                } else if (event.key === "Enter") {
+                    const buttons = getSearchResultButtons();
+                    if (buttons.length) {
+                        event.preventDefault();
+                        buttons[0].click();
+                    }
+                }
+            });
+
+            document.addEventListener("click", (event) => {
+                if (!panel.classList.contains("open")) return;
+                if (panel.contains(event.target) || event.target === button) return;
+                closeSearchPanel();
+            });
+
+            panel.addEventListener("keydown", (event) => {
+                if (event.key === "Escape") {
+                    closeSearchPanel({ restoreFocus: true });
+                }
+            });
+
+            renderSearchStatus(`Type at least ${SEARCH_MIN_QUERY} letters to search.`);
+        }
+
         function formatDateTime(ts) {
             if (!ts) return "";
             const date = new Date(ts);
@@ -1077,8 +1424,9 @@
         initContactLinks();
 
                 // initial load
-                loadParshiot();
-                loadTanachBooks();
+                loadParshiot().catch((err) => console.error("Failed to load parshiot:", err));
+                loadTanachBooks().catch((err) => console.error("Failed to load Tanach books:", err));
+                initSearchUI();
                 // show new feature intro once per browser
                 if (typeof openTanachIntroIfNeeded === "function") {
                     openTanachIntroIfNeeded();
@@ -1117,6 +1465,7 @@
           if (e.key === "Escape") {
             closeHelpModal();
             closeVerseModal();
+                        closeSearchPanel();
           }
         });
 

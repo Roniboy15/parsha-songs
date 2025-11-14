@@ -532,6 +532,60 @@ async function getPendingLinks() {
   }
 }
 
+async function searchLinksBySongTitle(query, limit = 25) {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+  const cappedLimit = Math.max(1, Math.min(50, limit));
+  if (usePg) {
+    const like = `%${trimmed.replace(/%/g, "\\%").replace(/_/g, "\\_" )}%`;
+    const { rows } = await pgPool.query(
+      `
+      SELECT l.id,
+             l.parasha_id,
+             l.target_kind,
+             l.target_id,
+             l.verse_ref,
+             l.status,
+             l.approved_at,
+             l.added_at,
+             s.title AS song_title,
+             s.external_url AS song_url
+        FROM links l
+        JOIN songs s ON l.song_id = s.id
+       WHERE l.status = 'approved'
+         AND s.title ILIKE $1 ESCAPE '\\'
+       ORDER BY l.added_at DESC
+       LIMIT $2
+      `,
+      [like, cappedLimit]
+    );
+    return rows;
+  } else {
+    const like = `%${trimmed.toLowerCase().replace(/%/g, "\\%").replace(/_/g, "\\_" )}%`;
+    const stmt = sqliteDb.prepare(
+      `
+      SELECT l.id,
+             l.parasha_id,
+             l.target_kind,
+             l.target_id,
+             l.verse_ref,
+             l.status,
+             l.approved_at,
+             l.added_at,
+             s.title AS song_title,
+             s.external_url AS song_url
+        FROM links l
+        JOIN songs s ON l.song_id = s.id
+       WHERE l.status = 'approved'
+         AND LOWER(s.title) LIKE ? ESCAPE '\\'
+       ORDER BY l.added_at DESC
+       LIMIT ?
+      `
+    );
+    return stmt.all(like, cappedLimit);
+  }
+}
+
 // delete one link
 async function deleteLink(id) {
   if (usePg) {
@@ -639,4 +693,5 @@ export {
   approveLinkById,
   rejectLinkById,
   getPendingLinks,
+  searchLinksBySongTitle,
 };

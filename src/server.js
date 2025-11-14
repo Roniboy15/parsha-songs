@@ -9,7 +9,7 @@ import * as dbModule from "./db.js";
 import nodemailer from "nodemailer";
 import { generalLimiter, writeLimiter, sensitiveLimiter, adminLimiter } from "./middlewares/rateLimit.js";
 import { validateBody, validateQuery } from "./middlewares/validate.js";
-import { linkCreateSchema, linksListQuerySchema, currentReadingQuerySchema, tanachLinksQuerySchema } from "./validation/schemas.js";
+import { linkCreateSchema, linksListQuerySchema, currentReadingQuerySchema, tanachLinksQuerySchema, searchSongsQuerySchema } from "./validation/schemas.js";
 import { buildSessionMiddleware } from "./auth/session.js";
 import { requireAdmin, attachAdminFlag } from "./middlewares/adminAuth.js";
 // add import
@@ -25,6 +25,7 @@ const {
   approveLinkById,
   rejectLinkById,
   getPendingLinks,
+  searchLinksBySongTitle,
 } = dbModule;
 // try to find the DB object on common export names
 const db = dbModule.default || dbModule.db || dbModule;
@@ -580,6 +581,17 @@ app.get("/api/links/approve/:token", async (req, res) => {
   } catch (err) {
     console.error("approve-token failed:", err);
     res.status(500).type("html").send(`<p>Failed to approve this song.</p>`);
+  }
+});
+
+app.get("/api/search/songs", validateQuery(searchSongsQuerySchema), async (req, res) => {
+  const { q } = res.locals.validatedQuery;
+  try {
+    const rows = await searchLinksBySongTitle(q, 30);
+    res.json(rows);
+  } catch (err) {
+    console.error("search-songs failed:", err);
+    res.status(500).json({ error: "search-failed" });
   }
 });
 
