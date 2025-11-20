@@ -39,6 +39,16 @@ app.set("trust proxy", 1);
 app.use(await buildSessionMiddleware(dbModule.usePg, db));
 app.use(attachAdminFlag);
 
+// ensure crawlers receive a favicon even if no .ico asset exists
+app.get("/favicon.ico", (req, res) => {
+  res.type("image/png").sendFile(path.join(__dirname, "..", "public", "logo-32.png"));
+});
+
+// reuse the main logo for Apple touch icon requests so they don't 404
+app.get("/apple-touch-icon.png", (req, res) => {
+  res.type("image/png").sendFile(path.join(__dirname, "..", "public", "logo.png"));
+});
+
 // middleware to track visits (MOVE THIS HERE - before routes)
 app.use(async (req, res, next) => {
   // only track GET requests to main page

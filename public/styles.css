@@ -178,7 +178,7 @@ table {
   margin: 18px auto;
   padding: 8px 16px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   position: relative;
@@ -338,7 +338,7 @@ table {
     border-radius: 8px;
     padding: 14px 24px;
     height: var(--site-header-height);
-    align-items: center;
+    align-items: flex-start;
     width: min(900px, calc(100% - 48px));
     overflow: visible;
   }
@@ -347,8 +347,8 @@ table {
   .site-logo {
     position: absolute;
     right: 12px;
-    top: 50%;
-    transform: translateY(-50%);
+    top: 14px;
+    transform: none;
     width: var(--logo-size);
     height: var(--logo-size);
   }
