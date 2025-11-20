@@ -39,9 +39,9 @@ app.set("trust proxy", 1);
 app.use(await buildSessionMiddleware(dbModule.usePg, db));
 app.use(attachAdminFlag);
 
-// ensure crawlers receive a favicon even if no .ico asset exists
+// ensure crawlers receive the favicon at the conventional path
 app.get("/favicon.ico", (req, res) => {
-  res.type("image/png").sendFile(path.join(__dirname, "..", "public", "logo-32.png"));
+  res.type("image/x-icon").sendFile(path.join(__dirname, "..", "public", "favicon.ico"));
 });
 
 // reuse the main logo for Apple touch icon requests so they don't 404
